@@ -11,6 +11,8 @@ import (
 const MaxConcurrentJobs = 5
 
 type Server struct {
+	scriptDir string
+	workingDir string
 	store               Store
 	concurrentJobTokens chan bool
 	runJobChan          chan JobRunRequest
@@ -25,8 +27,11 @@ type Server struct {
 	httpServer          http.Server
 }
 
-func NewServer() (server *Server, err error) {
+func NewServer(scriptDir string, workingDir string, httpInterfaceAddr string) (server *Server, err error) {
 	server = new(Server)
+
+	server.scriptDir = scriptDir
+	server.workingDir = workingDir
 
 	// TODO: a useful store!
 	server.store = new(StaticStore)
@@ -49,7 +54,7 @@ func NewServer() (server *Server, err error) {
 	server.requestStopChan = make(chan bool, 1)
 
 	server.httpServer = NewHttpInterface(server)
-	server.httpServer.Addr = "127.0.0.1:3000"
+	server.httpServer.Addr = httpInterfaceAddr
 
 	return
 }
@@ -150,8 +155,8 @@ func (self *Server) runJobFromRequest(req JobRunRequest) {
 		}
 
 		<-self.concurrentJobTokens
-		jobRun := JobRun{Job: *job}
-		err = job.Run(self.jobProgressNotifier(), self.finishedJobChan)
+		jobRun := JobRun{Job: *job, ScriptDir: self.scriptDir, WorkingDir: self.workingDir}
+		err = jobRun.Run(self.jobProgressNotifier(), self.finishedJobChan)
 		if err != nil {
 			log.Println(err)
 			return

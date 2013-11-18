@@ -9,12 +9,8 @@ import (
 
 func main() {
 	// TODO: command-line options
-	err := os.Chdir("/var/lib/crispyci")
-	if err != nil {
-		log.Fatal(err)
-	}
 
-	s, err := NewServer()
+	s, err := NewServer("/usr/libexec/crispyci", "/var/lib/crispyci", "127.0.0.1:3000")
 	if err != nil {
 		log.Fatal(err)
 	}

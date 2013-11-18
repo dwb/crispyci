@@ -4,13 +4,17 @@ import (
 	"bufio"
 	"io"
 	"os/exec"
+	"path"
 	"syscall"
 	"time"
 )
 
-func (self *Job) Run(notifyProgress chan JobProgress, notifyFinish chan JobResult) (err error) {
-	cmd := exec.Command("./run-" + self.ScriptSet)
+func (self *JobRun) Run(notifyProgress chan JobProgress, notifyFinish chan JobResult) (err error) {
+	cmd := new(exec.Cmd)
+	cmd.Path = path.Join(self.ScriptDir, "run-" + self.Job.ScriptSet)
 	setupCmd(cmd)
+	cmd.Dir = path.Join(self.WorkingDir, "jobs", self.Job.Name)
+
 	stdoutPipe, err := cmd.StdoutPipe()
 	if err != nil {
 		return
@@ -25,7 +29,7 @@ func (self *Job) Run(notifyProgress chan JobProgress, notifyFinish chan JobResul
 	if err != nil {
 		return
 	}
-	jobResult := JobResult{Job: *self, StartedAt: time.Now()}
+	jobResult := JobResult{Job: self.Job, StartedAt: time.Now()}
 
 	go func() {
 		stdout := lineChanFromReader(stdoutPipe)
@@ -34,7 +38,7 @@ func (self *Job) Run(notifyProgress chan JobProgress, notifyFinish chan JobResul
 
 		processLine := func(line string, ch chan string) {
 			if line != "" {
-				notifyProgress <- JobProgress{Job: *self, Line: line}
+				notifyProgress <- JobProgress{Job: self.Job, Line: line}
 				output += line
 			}
 		}
