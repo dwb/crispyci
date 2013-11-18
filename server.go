@@ -98,6 +98,7 @@ func (self *Server) Serve() {
 					self.runJobFromRequest(req)
 				}
 			}
+
 		case <-self.requestStopChan:
 			self.shouldStop = true
 		}
@@ -119,7 +120,6 @@ func (self *Server) SubmitJobRunRequest(req JobRunRequest) {
 
 func (self *Server) WaitGroupAdd(n int) {
 	self.waitGroup.Add(n)
-	// self.addWaitGroupChan <- n
 }
 
 func (self *Server) WaitGroupDone() {
