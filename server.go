@@ -27,15 +27,13 @@ type Server struct {
 	httpServer          http.Server
 }
 
-func NewServer(scriptDir string, workingDir string, httpInterfaceAddr string) (server *Server, err error) {
+func NewServer(store Store, scriptDir string, workingDir string, httpInterfaceAddr string) (server *Server, err error) {
 	server = new(Server)
 
 	server.scriptDir = scriptDir
 	server.workingDir = workingDir
 
-	// TODO: a useful store!
-	server.store = new(StaticStore)
-	server.store.Init("")
+	server.store = store
 
 	server.concurrentJobTokens = make(chan bool, MaxConcurrentJobs)
 	// Pre-fill with start "tokens"
