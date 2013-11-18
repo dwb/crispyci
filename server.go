@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"sync"
 )
 
 const MaxConcurrentJobs = 5
@@ -18,6 +19,9 @@ type Server struct {
 	finishedJobChan     chan JobResult
 	runningJobs         map[JobId]*JobRun
 	waitingJobRuns      map[JobId]*list.List
+	waitGroup           *sync.WaitGroup
+	requestStopChan     chan bool
+	shouldStop          bool
 	httpServer          http.Server
 }
 
@@ -41,7 +45,10 @@ func NewServer() (server *Server, err error) {
 	server.runningJobs = make(map[JobId]*JobRun)
 	server.waitingJobRuns = make(map[JobId]*list.List)
 
-	server.httpServer = NewHttpInterface(server.runJobChan)
+	server.waitGroup = new(sync.WaitGroup)
+	server.requestStopChan = make(chan bool, 1)
+
+	server.httpServer = NewHttpInterface(server)
 	server.httpServer.Addr = "127.0.0.1:3000"
 
 	return
@@ -57,7 +64,7 @@ func (self *Server) Serve() {
 	for {
 		select {
 		case req := <-self.runJobChan:
-			go self.runJobFromRequest(req)
+			self.runJobFromRequest(req)
 
 		case req := <-self.canStartJobChan:
 			if _, ok := self.runningJobs[req.Job.Id]; ok {
@@ -80,47 +87,78 @@ func (self *Server) Serve() {
 		case jobResult := <-self.finishedJobChan:
 			log.Printf("Job finished: %s\n", jobResult.Job.Name)
 			delete(self.runningJobs, jobResult.Job.Id)
+			if self.shouldStop && len(self.runningJobs) == 0 {
+				break
+			}
 			self.concurrentJobTokens <- true
 			if jobQueue, ok := self.waitingJobRuns[jobResult.Job.Id]; ok {
 				reqElement := jobQueue.Back()
 				if reqElement != nil {
 					req := jobQueue.Remove(reqElement).(JobRunRequest)
-					go self.runJobFromRequest(req)
+					self.runJobFromRequest(req)
 				}
 			}
+		case <-self.requestStopChan:
+			self.shouldStop = true
+		}
+
+		if self.shouldStop && len(self.runningJobs) == 0 {
+			self.waitGroup.Wait()
+			break
 		}
 	}
 }
 
+func (self *Server) Stop() {
+	self.requestStopChan <- true
+}
+
+func (self *Server) SubmitJobRunRequest(req JobRunRequest) {
+	self.runJobChan <- req
+}
+
+func (self *Server) WaitGroupAdd(n int) {
+	self.waitGroup.Add(n)
+	// self.addWaitGroupChan <- n
+}
+
+func (self *Server) WaitGroupDone() {
+	self.waitGroup.Done()
+}
+
+// ---
+
 func (self *Server) runJobFromRequest(req JobRunRequest) {
-	log.Printf("Received job run request for '%s'\n", req.JobName)
+	go func() {
+		log.Printf("Received job run request for '%s'\n", req.JobName)
 
-	job, err := req.FindJob(self.store)
-	if job == nil {
-		log.Printf("Couldn't find job '%s'\n", req.JobName)
-		return
-	}
-	if err != nil {
-		log.Printf("Error getting job: %s\n", err)
-		return
-	}
+		job, err := req.FindJob(self.store)
+		if job == nil {
+			log.Printf("Couldn't find job '%s'\n", req.JobName)
+			return
+		}
+		if err != nil {
+			log.Printf("Error getting job: %s\n", err)
+			return
+		}
 
-	req.Job = *job
-	req.AllowStart = make(chan bool)
-	self.canStartJobChan <- req
-	shouldStart := <-req.AllowStart
-	if !shouldStart {
-		return
-	}
+		req.Job = *job
+		req.AllowStart = make(chan bool)
+		self.canStartJobChan <- req
+		shouldStart := <-req.AllowStart
+		if !shouldStart {
+			return
+		}
 
-	<-self.concurrentJobTokens
-	jobRun := JobRun{Job: *job}
-	err = job.Run(self.jobProgressNotifier(), self.finishedJobChan)
-	if err != nil {
-		log.Println(err)
-		return
-	}
-	self.startedJobChan <- jobRun
+		<-self.concurrentJobTokens
+		jobRun := JobRun{Job: *job}
+		err = job.Run(self.jobProgressNotifier(), self.finishedJobChan)
+		if err != nil {
+			log.Println(err)
+			return
+		}
+		self.startedJobChan <- jobRun
+	}()
 }
 
 func (self *Server) jobProgressNotifier() (chanOut chan JobProgress) {

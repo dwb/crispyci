@@ -4,11 +4,13 @@ import (
 	"bufio"
 	"io"
 	"os/exec"
+	"syscall"
 	"time"
 )
 
 func (self *Job) Run(notifyProgress chan JobProgress, notifyFinish chan JobResult) (err error) {
 	cmd := exec.Command("./run-" + self.ScriptSet)
+	setupCmd(cmd)
 	stdoutPipe, err := cmd.StdoutPipe()
 	if err != nil {
 		return
@@ -88,4 +90,14 @@ func lineChanFromReader(reader io.Reader) (chanOut chan string) {
 		close(chanOut)
 	}()
 	return
+}
+
+func setupCmd(cmd *exec.Cmd) {
+	if cmd.SysProcAttr == nil {
+		cmd.SysProcAttr = &syscall.SysProcAttr{}
+	}
+	/* If we put the command in a new process group, a SIGINT/Ctrl-C won't get
+	 * passed through to it.
+	 */
+	cmd.SysProcAttr.Setpgid = true
 }

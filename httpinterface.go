@@ -18,9 +18,11 @@ type githubWebhookPayload struct {
 	Ref string
 }
 
+const StatusUnprocessableEntity = 422
+
 var branchRefPattern = regexp.MustCompile(`^refs/heads/(\w+)$`)
 
-func NewHttpInterface(runJob chan JobRunRequest) (out http.Server) {
+func NewHttpInterface(server *Server) (out http.Server) {
 	r := mux.NewRouter()
 	rApi := r.PathPrefix("/api/").Subrouter()
 
@@ -46,7 +48,7 @@ func NewHttpInterface(runJob chan JobRunRequest) (out http.Server) {
 		var payload githubWebhookPayload
 		err := dec.Decode(&payload)
 		if err != nil {
-			w.WriteHeader(422) // Unprocessable Entity
+			w.WriteHeader(StatusUnprocessableEntity)
 			return
 		}
 
@@ -59,10 +61,14 @@ func NewHttpInterface(runJob chan JobRunRequest) (out http.Server) {
 		req := NewJobRunRequest()
 		req.JobName = name
 		req.Source = "Github"
-		runJob <- req
-		w.WriteHeader(204) // No Content
-
+		server.SubmitJobRunRequest(req)
+		w.WriteHeader(http.StatusNoContent)
 	})
 
-	return http.Server{Handler: r}
+	hWaitGroup := http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		server.WaitGroupAdd(1)
+		r.ServeHTTP(w, request)
+		server.WaitGroupDone()
+	})
+	return http.Server{Handler: hWaitGroup}
 }
