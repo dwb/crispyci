@@ -30,8 +30,8 @@ func (self *JobRunRequest) FindJob(store Store) (job *Job, err error) {
 }
 
 type JobRun struct {
-	Job Job
-	ScriptDir string
+	Job        Job
+	ScriptDir  string
 	WorkingDir string
 }
 

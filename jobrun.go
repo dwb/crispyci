@@ -11,7 +11,7 @@ import (
 
 func (self *JobRun) Run(notifyProgress chan JobProgress, notifyFinish chan JobResult) (err error) {
 	cmd := new(exec.Cmd)
-	cmd.Path = path.Join(self.ScriptDir, "run-" + self.Job.ScriptSet)
+	cmd.Path = path.Join(self.ScriptDir, "run-"+self.Job.ScriptSet)
 	setupCmd(cmd)
 	cmd.Dir = path.Join(self.WorkingDir, "jobs", self.Job.Name)
 

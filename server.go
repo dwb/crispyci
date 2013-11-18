@@ -11,8 +11,8 @@ import (
 const MaxConcurrentJobs = 5
 
 type Server struct {
-	scriptDir string
-	workingDir string
+	scriptDir           string
+	workingDir          string
 	store               Store
 	concurrentJobTokens chan bool
 	runJobChan          chan JobRunRequest
