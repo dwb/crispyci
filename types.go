@@ -21,7 +21,7 @@ type JobRunRequest struct {
 }
 
 func NewJobRunRequest() (req JobRunRequest) {
-	return JobRunRequest{ReceivedAt: time.Now()}
+	return JobRunRequest{ReceivedAt: time.Now(), AllowStart: make(chan bool)}
 }
 
 func (self *JobRunRequest) FindJob(store Store) (job *Job, err error) {

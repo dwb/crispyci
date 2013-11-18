@@ -143,7 +143,6 @@ func (self *Server) runJobFromRequest(req JobRunRequest) {
 		}
 
 		req.Job = *job
-		req.AllowStart = make(chan bool)
 		self.canStartJobChan <- req
 		shouldStart := <-req.AllowStart
 		if !shouldStart {
