@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-func (self *JobRun) Run(notifyProgress chan JobProgress, notifyFinish chan JobResult) (err error) {
+func (self *JobRun) Run(notifyProgress chan JobProgress) (err error) {
 	cmd := new(exec.Cmd)
 	cmd.Path = path.Join(self.ScriptDir, "run-"+self.Job.ScriptSet)
 	setupCmd(cmd)
@@ -29,17 +29,15 @@ func (self *JobRun) Run(notifyProgress chan JobProgress, notifyFinish chan JobRe
 	if err != nil {
 		return
 	}
-	jobResult := JobResult{Job: self.Job, StartedAt: time.Now()}
+	self.setStatus(JobStarted)
 
 	go func() {
 		stdout := lineChanFromReader(stdoutPipe)
 		stderr := lineChanFromReader(stderrPipe)
-		output := ""
 
 		processLine := func(line string, ch chan string) {
 			if line != "" {
-				notifyProgress <- JobProgress{Job: self.Job, Line: line}
-				output += line
+				notifyProgress <- JobProgress{JobRun: *self, Time: time.Now(), Line: line}
 			}
 		}
 
@@ -64,18 +62,29 @@ func (self *JobRun) Run(notifyProgress chan JobProgress, notifyFinish chan JobRe
 
 		err = cmd.Wait()
 
-		jobResult.FinishedAt = time.Now()
-		jobResult.Output = output
+		self.FinishedAt = time.Now()
 		if err == nil {
-			jobResult.Status = JobSucceeded
+			self.setStatus(JobSucceeded)
 		} else {
-			jobResult.Status = JobFailed
+			self.setStatus(JobFailed)
 		}
-
-		notifyFinish <- jobResult
 	}()
 
 	return nil
+}
+
+func (self *JobRun) setStatus(newStatus JobStatus) {
+	if newStatus == JobStarted {
+		self.StartedAt = time.Now()
+	} else {
+		self.FinishedAt = time.Now()
+	}
+
+	self.Status = newStatus
+
+	if self.statusChanges != nil {
+		self.statusChanges <- *self
+	}
 }
 
 func lineChanFromReader(reader io.Reader) (chanOut chan string) {

@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<!-- vim: syntax=mustache
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="">
+    <meta name="author" content="">
+    <!-- <link rel="shortcut icon" href="../../docs-assets/ico/favicon.png"> -->
+
+    <title>Crispy CI</title>
+
+    <link rel="stylesheet" href="//netdna.bootstrapcdn.com/bootstrap/3.0.2/css/bootstrap.min.css">
+    <link rel="stylesheet" href="/static/application.css">
+
+    <!-- HTML5 shim and Respond.js IE8 support of HTML5 elements and media queries -->
+    <!--[if lt IE 9]>
+      <script src="https://oss.maxcdn.com/libs/html5shiv/3.7.0/html5shiv.js"></script>
+      <script src="https://oss.maxcdn.com/libs/respond.js/1.3.0/respond.min.js"></script>
+    <![endif]-->
+
+    <script type="text/x-handlebars" data-template-name="application">
+      {{render "navigation"}}
+      <div class="container">
+      {{outlet}}
+      </div>
+    </script>
+
+
+    <script type="text/x-handlebars" data-template-name="navigation">
+      <!-- Fixed navbar -->
+      <div class="navbar navbar-default navbar-fixed-top" role="navigation">
+        <div class="container">
+          <div class="navbar-header">
+            <button type="button" class="navbar-toggle" data-toggle="collapse" data-target=".navbar-collapse">
+              <span class="sr-only">Toggle navigation</span>
+              <span class="icon-bar"></span>
+              <span class="icon-bar"></span>
+              <span class="icon-bar"></span>
+            </button>
+            {{#link-to 'index' class="navbar-brand"}}Crispy CI{{/link-to}}
+          </div>
+          <div class="navbar-collapse collapse">
+            <ul class="nav navbar-nav">
+              <li>
+                {{#link-to 'jobs.new'}}New Job{{/link-to}}
+              </li>
+            </ul>
+          </div><!--/.nav-collapse -->
+        </div>
+      </div>
+    </script>
+
+    <script type="text/x-handlebars" data-template-name="jobs">
+      <h1>All Jobs</h1>
+
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Status</th>
+            <th>Last Started At</th>
+            <th>Last Finished At</th>
+            <th>Last Duration</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{#each}}
+          <tr {{bind-attr class="lastRun.statusBootstrapType"}}>
+            <td>{{#link-to 'job' this}}{{name}}{{/link-to}}</td>
+            <td>{{lastRun.statusName}}</td>
+            <td>{{lastRun.startedAt}}</td>
+            <td>{{lastRun.finishedAt}}</td>
+            <td>{{lastRun.duration}}</td>
+          </tr>
+          {{/each}}
+        </tbody>
+      </table>
+    </script>
+
+    <script type="text/x-handlebars" data-template-name="job">
+      <h1>{{name}}</h1>
+
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Status</th>
+            <th>Started At</th>
+            <th>Finished At</th>
+            <th>Duration</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{#each jobRuns}}
+          <tr {{bind-attr class="statusBootstrapType"}}>
+            <td>{{statusName}}</td>
+            <td>{{startedAt}}</td>
+            <td>{{finishedAt}}</td>
+            <td>{{duration}}</td>
+          </tr>
+          {{/each}}
+        </tbody>
+      </table>
+    </script>
+
+
+  </head>
+
+  <body>
+
+    <!-- Bootstrap core JavaScript
+    ================================================== -->
+    <!-- Placed at the end of the document so the pages load faster -->
+    <script src="//cdnjs.cloudflare.com/ajax/libs/modernizr/2.6.2/modernizr.min.js"></script>
+    <script src="https://code.jquery.com/jquery-1.10.2.min.js"></script>
+    <script src="//netdna.bootstrapcdn.com/bootstrap/3.0.2/js/bootstrap.min.js"></script>
+    <script src="//cdnjs.cloudflare.com/ajax/libs/handlebars.js/1.1.2/handlebars.js"></script>
+    <script src="//cdnjs.cloudflare.com/ajax/libs/ember.js/1.1.2/ember.js"></script>
+    <script src="//builds.emberjs.com/tags/v1.0.0-beta.3/ember-data.js"></script>
+    <script src="//cdnjs.cloudflare.com/ajax/libs/moment.js/2.4.0/moment.min.js"></script>
+    <script src="/static/application.js"></script>
+  </body>
+</html>

@@ -17,8 +17,7 @@ type Server struct {
 	concurrentJobTokens chan bool
 	runJobChan          chan JobRunRequest
 	canStartJobChan     chan JobRunRequest
-	startedJobChan      chan JobRun
-	finishedJobChan     chan JobResult
+	jobStatusChan       chan JobRun
 	runningJobs         map[JobId]*JobRun
 	waitingJobRuns      map[JobId]*list.List
 	waitGroup           *sync.WaitGroup
@@ -42,8 +41,7 @@ func NewServer(store Store, scriptDir string, workingDir string, httpInterfaceAd
 	}
 	server.runJobChan = make(chan JobRunRequest, 1)
 	server.canStartJobChan = make(chan JobRunRequest, 5)
-	server.startedJobChan = make(chan JobRun, 5)
-	server.finishedJobChan = make(chan JobResult, 5)
+	server.jobStatusChan = make(chan JobRun, 5)
 
 	server.runningJobs = make(map[JobId]*JobRun)
 	server.waitingJobRuns = make(map[JobId]*list.List)
@@ -83,22 +81,28 @@ func (self *Server) Serve() {
 				req.AllowStart <- true
 			}
 
-		case jobRun := <-self.startedJobChan:
-			log.Printf("Started job: %s\n", jobRun.Job.Name)
-			self.runningJobs[jobRun.Job.Id] = &jobRun
-
-		case jobResult := <-self.finishedJobChan:
-			log.Printf("Job finished: %s\n", jobResult.Job.Name)
-			delete(self.runningJobs, jobResult.Job.Id)
-			if self.shouldStop && len(self.runningJobs) == 0 {
-				break
-			}
-			self.concurrentJobTokens <- true
-			if jobQueue, ok := self.waitingJobRuns[jobResult.Job.Id]; ok {
-				reqElement := jobQueue.Back()
-				if reqElement != nil {
-					req := jobQueue.Remove(reqElement).(JobRunRequest)
-					self.runJobFromRequest(req)
+		case jobRun := <-self.jobStatusChan:
+			if jobRun.Status == JobStarted {
+				log.Printf("Started job: %s\n", jobRun.Job.Name)
+				self.runningJobs[jobRun.Job.Id] = &jobRun
+			} else {
+				err := self.store.WriteJobRun(jobRun)
+				if err != nil {
+					log.Printf("Error writing job run: %s\n", err)
+				}
+				job := jobRun.Job
+				log.Printf("Job finished: %s\n", job.Name)
+				delete(self.runningJobs, job.Id)
+				if self.shouldStop && len(self.runningJobs) == 0 {
+					break
+				}
+				self.concurrentJobTokens <- true
+				if jobQueue, ok := self.waitingJobRuns[job.Id]; ok {
+					reqElement := jobQueue.Back()
+					if reqElement != nil {
+						req := jobQueue.Remove(reqElement).(JobRunRequest)
+						self.runJobFromRequest(req)
+					}
 				}
 			}
 
@@ -153,13 +157,13 @@ func (self *Server) runJobFromRequest(req JobRunRequest) {
 		}
 
 		<-self.concurrentJobTokens
-		jobRun := JobRun{Job: *job, ScriptDir: self.scriptDir, WorkingDir: self.workingDir}
-		err = jobRun.Run(self.jobProgressNotifier(), self.finishedJobChan)
+		jobRun := NewJobRun(*job, self.scriptDir, self.workingDir,
+			self.jobStatusChan)
+		err = jobRun.Run(self.jobProgressNotifier())
 		if err != nil {
 			log.Println(err)
 			return
 		}
-		self.startedJobChan <- jobRun
 	}()
 }
 
@@ -169,6 +173,8 @@ func (self *Server) jobProgressNotifier() (chanOut chan JobProgress) {
 	go func() {
 		for progress := range chanOut {
 			fmt.Print(progress.Line)
+			// TODO: don't swallow error
+			go self.store.WriteJobProgress(progress)
 		}
 	}()
 	return

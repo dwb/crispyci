@@ -12,19 +12,19 @@ var (
 type JobId uint64
 
 type Job struct {
-	Id        JobId
-	Name      string
-	ScriptSet string
+	Id        JobId `json:"id"`
+	Name      string `json:"name"`
+	ScriptSet string `json:"scriptSet"`
 }
 
-func newJobId() (id JobId) {
-	id = JobId(rng.Uint32())
-	id |= JobId(rng.Uint32() << 32)
+func randUint64() (out uint64) {
+	out = uint64(rng.Uint32())
+	out |= uint64(rng.Uint32() << 32)
 	return
 }
 
 func NewJob() (newJob Job) {
-	return Job{Id: newJobId()}
+	return Job{Id: JobId(randUint64())}
 }
 
 type JobRunRequest struct {
@@ -44,39 +44,49 @@ func (self *JobRunRequest) FindJob(store Store) (job *Job, err error) {
 	return
 }
 
+type JobRunId uint64
+
 type JobRun struct {
-	Job        Job
-	ScriptDir  string
-	WorkingDir string
+	Id            JobRunId `json:"id"`
+	Job           Job `json:"-"`
+	ScriptDir     string `json:"-"`
+	WorkingDir    string `json:"-"`
+	Status        JobStatus `json:"status"`
+	StartedAt     time.Time `json:"startedAt"`
+	FinishedAt    time.Time `json:"finishedAt"`
+	statusChanges chan JobRun
+}
+
+func NewJobRun(job Job, scriptDir string, workingDir string, statusChanges chan JobRun) (out JobRun) {
+	return JobRun{Id: JobRunId(randUint64()), Job: job, ScriptDir: scriptDir,
+		WorkingDir: workingDir, statusChanges: statusChanges}
 }
 
 type JobProgress struct {
-	Job  Job
-	Line string
+	JobRun JobRun
+	Time   time.Time
+	Line   string
 }
 
-type JobStatus int
+type JobStatus uint8
 
 const (
-	JobSucceeded JobStatus = iota
+	JobUnknown JobStatus = iota
+	JobStarted
+	JobSucceeded
 	JobFailed
-	JobUnknown
 )
-
-type JobResult struct {
-	Job        Job
-	Status     JobStatus
-	StartedAt  time.Time
-	FinishedAt time.Time
-	Output     string
-}
 
 type Store interface {
 	Init(connectionString string) error
 	Close()
 	AllJobs() ([]Job, error)
+	JobById(id JobId) (*Job, error)
 	JobByName(name string) (*Job, error)
-	WriteJob(*Job) error
-	ResultsForJob(*Job) ([]JobResult, error)
-	WriteJobResult(JobResult) error
+	WriteJob(Job) error
+	RunsForJob(Job) ([]JobRun, error)
+	LastRunForJob(Job) (*JobRun, error)
+	WriteJobRun(JobRun) error
+	ProgressForJobRun(JobRun) (*[]JobProgress, error)
+	WriteJobProgress(JobProgress) error
 }
