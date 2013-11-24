@@ -12,7 +12,7 @@ var (
 type JobId uint64
 
 type Job struct {
-	Id        JobId `json:"id"`
+	Id        JobId  `json:"id"`
 	Name      string `json:"name"`
 	ScriptSet string `json:"scriptSet"`
 }
@@ -47,10 +47,10 @@ func (self *JobRunRequest) FindJob(store Store) (job *Job, err error) {
 type JobRunId uint64
 
 type JobRun struct {
-	Id            JobRunId `json:"id"`
-	Job           Job `json:"-"`
-	ScriptDir     string `json:"-"`
-	WorkingDir    string `json:"-"`
+	Id            JobRunId  `json:"id"`
+	Job           Job       `json:"-"`
+	ScriptDir     string    `json:"-"`
+	WorkingDir    string    `json:"-"`
 	Status        JobStatus `json:"status"`
 	StartedAt     time.Time `json:"startedAt"`
 	FinishedAt    time.Time `json:"finishedAt"`
