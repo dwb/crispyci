@@ -1,4 +1,4 @@
-package main
+package types
 
 import (
 	"math/rand"
@@ -25,6 +25,11 @@ func randUint64() (out uint64) {
 
 func NewJob() (newJob Job) {
 	return Job{Id: JobId(randUint64())}
+}
+
+type JobWithRunning struct {
+	Job
+	Running bool
 }
 
 type JobRunRequest struct {
@@ -76,6 +81,28 @@ const (
 	JobSucceeded
 	JobFailed
 )
+
+type Server interface {
+	ScriptDir() string
+
+	SubmitJobRunRequest(JobRunRequest)
+	IsJobRunning(JobId) bool
+
+	SubJobUpdates() (chan interface{})
+	SubJobRunUpdates() (chan interface{})
+	Unsub(chan interface{})
+	WaitGroupAdd(n int)
+	WaitGroupDone()
+
+	// Store proxies
+	AllJobs() ([]Job, error)
+	JobById(id JobId) (*Job, error)
+	JobByName(name string) (*Job, error)
+	WriteJob(Job) error
+	RunsForJob(Job) ([]JobRun, error)
+	LastRunForJob(Job) (*JobRun, error)
+	ProgressForJobRun(JobRun) (*[]JobProgress, error)
+}
 
 type Store interface {
 	Init(connectionString string) error

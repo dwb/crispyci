@@ -1,4 +1,4 @@
-package main
+package webui
 
 import (
 	"bytes"
@@ -8,6 +8,8 @@ import (
 	"path"
 	"regexp"
 	"strconv"
+
+	"github.com/dwb/crispyci/types"
 )
 
 type githubWebhookPayload struct {
@@ -30,15 +32,15 @@ type jobShowResponse struct {
 }
 
 type jobWithRuns struct {
-	Job
-	JobRuns []JobRun `json:"jobRuns"`
+	types.Job
+	JobRuns []types.JobRun `json:"jobRuns"`
 }
 
 const StatusUnprocessableEntity = 422
 
 var branchRefPattern = regexp.MustCompile(`^refs/heads/(\w+)$`)
 
-func NewHttpInterface(server *Server) (out http.Server) {
+func New(server types.Server) (out http.Server) {
 	r := mux.NewRouter()
 	rApi := r.PathPrefix("/api/v1/").Subrouter()
 
@@ -47,7 +49,7 @@ func NewHttpInterface(server *Server) (out http.Server) {
 		Path("/jobs").
 		HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 
-		jobs, err := server.store.AllJobs()
+		jobs, err := server.AllJobs()
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
@@ -55,7 +57,7 @@ func NewHttpInterface(server *Server) (out http.Server) {
 
 		jobsWithRuns := make([]jobWithRuns, 0, len(jobs))
 		for _, job := range jobs {
-			jobRuns, err := server.store.RunsForJob(job)
+			jobRuns, err := server.RunsForJob(job)
 			if err != nil {
 				continue
 			}
@@ -77,19 +79,19 @@ func NewHttpInterface(server *Server) (out http.Server) {
 			return
 		}
 
-		job, err := server.store.JobById(JobId(jobId))
+		job, err := server.JobById(types.JobId(jobId))
 		if err != nil || job == nil {
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
 
-		jobRuns, err := server.store.RunsForJob(*job)
+		jr, err := getJobWithRuns(job, server)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
 
-		writeHttpJSON(w, jobShowResponse{Job: jobWithRuns{Job: *job, JobRuns: jobRuns}})
+		writeHttpJSON(w, jobShowResponse{Job: jr})
 	})
 
 	rApi.
@@ -98,7 +100,7 @@ func NewHttpInterface(server *Server) (out http.Server) {
 		HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 
 		dec := json.NewDecoder(request.Body)
-		newJob := NewJob()
+		newJob := types.NewJob()
 		err := dec.Decode(&newJob)
 		if err != nil {
 			w.WriteHeader(StatusUnprocessableEntity)
@@ -108,7 +110,7 @@ func NewHttpInterface(server *Server) (out http.Server) {
 
 		// TODO: input validation
 
-		err = server.store.WriteJob(newJob)
+		err = server.WriteJob(newJob)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			// TODO: better error message / logging
@@ -139,7 +141,7 @@ func NewHttpInterface(server *Server) (out http.Server) {
 			name += "-" + m[1]
 		}
 
-		req := NewJobRunRequest()
+		req := types.NewJobRunRequest()
 		req.JobName = name
 		req.Source = "Github"
 		server.SubmitJobRunRequest(req)
@@ -150,10 +152,10 @@ func NewHttpInterface(server *Server) (out http.Server) {
 	rApi.PathPrefix("/").Handler(http.NotFoundHandler())
 
 	r.PathPrefix("/static/").Handler(http.StripPrefix("/static/",
-		http.FileServer(http.Dir(path.Join(server.scriptDir, "www")))))
+		http.FileServer(http.Dir(path.Join(server.ScriptDir(), "www")))))
 
 	// Any other paths, just return index.html
-	indexHtmlPath := path.Join(server.scriptDir, "www/index.html")
+	indexHtmlPath := path.Join(server.ScriptDir(), "www/index.html")
 	r.PathPrefix("/").HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 		http.ServeFile(w, request, indexHtmlPath)
 	})
@@ -180,4 +182,13 @@ func writeHttpJSON(w http.ResponseWriter, data interface{}) {
 
 func prepareJSONHeaders(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "application/json")
+}
+
+func getJobWithRuns(job *types.Job, server types.Server) (out jobWithRuns, err error) {
+	jobRuns, err := server.RunsForJob(*job)
+	if err != nil {
+		return
+	}
+
+	return jobWithRuns{Job: *job, JobRuns: jobRuns}, nil
 }

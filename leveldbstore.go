@@ -9,13 +9,15 @@ import (
 	"log"
 	"strconv"
 	"strings"
+
+	"github.com/dwb/crispyci/types"
 )
 
 type LevelDbStore struct {
 	db *leveldb.DB
 }
 
-const jobsKey = "Job:"
+const jobsKey = "types.Job:"
 
 var (
 	levelDbWriteOptions = leveldbopt.WriteOptions{Sync: true}
@@ -36,14 +38,14 @@ func (self *LevelDbStore) Close() {
 	}
 }
 
-func (self *LevelDbStore) AllJobs() (jobs []Job, err error) {
-	jobs = make([]Job, 0)
+func (self *LevelDbStore) AllJobs() (jobs []types.Job, err error) {
+	jobs = make([]types.Job, 0)
 
 	iter := self.db.NewIterator(nil)
 	defer iter.Release()
 
 	for iter.Seek([]byte(jobsKey)); strings.HasPrefix(string(iter.Key()), jobsKey); iter.Next() {
-		var job Job
+		var job types.Job
 		dec := gob.NewDecoder(bytes.NewBuffer(iter.Value()))
 		err := dec.Decode(&job)
 		if err == nil {
@@ -53,7 +55,7 @@ func (self *LevelDbStore) AllJobs() (jobs []Job, err error) {
 	return
 }
 
-func (self *LevelDbStore) JobById(id JobId) (job *Job, err error) {
+func (self *LevelDbStore) JobById(id types.JobId) (job *types.Job, err error) {
 	buf, err := self.db.Get([]byte(jobKeyById(id)), nil)
 	if err != nil {
 		return
@@ -67,7 +69,7 @@ func (self *LevelDbStore) JobById(id JobId) (job *Job, err error) {
 	return
 }
 
-func (self *LevelDbStore) JobByName(name string) (job *Job, err error) {
+func (self *LevelDbStore) JobByName(name string) (job *types.Job, err error) {
 	ss, err := self.db.GetSnapshot()
 	if err != nil {
 		return
@@ -83,7 +85,7 @@ func (self *LevelDbStore) JobByName(name string) (job *Job, err error) {
 		return
 	}
 
-	buf, err := ss.Get([]byte(jobKeyById(JobId(jobId))), nil)
+	buf, err := ss.Get([]byte(jobKeyById(types.JobId(jobId))), nil)
 	if err != nil {
 		return
 	}
@@ -96,7 +98,7 @@ func (self *LevelDbStore) JobByName(name string) (job *Job, err error) {
 	return
 }
 
-func (self *LevelDbStore) WriteJob(job Job) (err error) {
+func (self *LevelDbStore) WriteJob(job types.Job) (err error) {
 	var buf bytes.Buffer
 	enc := gob.NewEncoder(&buf)
 	enc.Encode(&job)
@@ -110,15 +112,15 @@ func (self *LevelDbStore) WriteJob(job Job) (err error) {
 	return
 }
 
-func (self *LevelDbStore) RunsForJob(job Job) (results []JobRun, err error) {
-	results = make([]JobRun, 0)
+func (self *LevelDbStore) RunsForJob(job types.Job) (results []types.JobRun, err error) {
+	results = make([]types.JobRun, 0)
 
 	iter := self.db.NewIterator(nil)
 	prefix := jobRunsKey(job)
 	defer iter.Release()
 
 	for iter.Seek([]byte(prefix)); strings.HasPrefix(string(iter.Key()), prefix); iter.Next() {
-		var jobRun JobRun
+		var jobRun types.JobRun
 		dec := gob.NewDecoder(bytes.NewBuffer(iter.Value()))
 		err := dec.Decode(&jobRun)
 		if err == nil {
@@ -128,7 +130,7 @@ func (self *LevelDbStore) RunsForJob(job Job) (results []JobRun, err error) {
 	return
 }
 
-func (self *LevelDbStore) LastRunForJob(job Job) (result *JobRun, err error) {
+func (self *LevelDbStore) LastRunForJob(job types.Job) (result *types.JobRun, err error) {
 	// TODO: we can doubtless do this more efficiently if we don't decode
 	// all previous results, but hey it'll be pretty quick as it is.
 
@@ -144,7 +146,7 @@ func (self *LevelDbStore) LastRunForJob(job Job) (result *JobRun, err error) {
 	return nil, nil
 }
 
-func (self *LevelDbStore) WriteJobRun(jobRun JobRun) (err error) {
+func (self *LevelDbStore) WriteJobRun(jobRun types.JobRun) (err error) {
 	key := jobRunKey(jobRun)
 
 	var buf bytes.Buffer
@@ -154,15 +156,15 @@ func (self *LevelDbStore) WriteJobRun(jobRun JobRun) (err error) {
 	return
 }
 
-func (self *LevelDbStore) ProgressForJobRun(jobRun JobRun) (progress *[]JobProgress, err error) {
-	ps := make([]JobProgress, 0)
+func (self *LevelDbStore) ProgressForJobRun(jobRun types.JobRun) (progress *[]types.JobProgress, err error) {
+	ps := make([]types.JobProgress, 0)
 
 	iter := self.db.NewIterator(nil)
 	defer iter.Release()
 	prefix := jobProgressPrefix(jobRun)
 
 	for iter.Seek([]byte(prefix)); strings.HasPrefix(string(iter.Key()), prefix); iter.Next() {
-		var p JobProgress
+		var p types.JobProgress
 		dec := gob.NewDecoder(bytes.NewBuffer(iter.Value()))
 		err := dec.Decode(&p)
 		if err == nil {
@@ -172,7 +174,7 @@ func (self *LevelDbStore) ProgressForJobRun(jobRun JobRun) (progress *[]JobProgr
 	return &ps, nil
 }
 
-func (self *LevelDbStore) WriteJobProgress(jobProgress JobProgress) (err error) {
+func (self *LevelDbStore) WriteJobProgress(jobProgress types.JobProgress) (err error) {
 	key := []byte(jobProgressPrefix(jobProgress.JobRun) + jobProgress.Time.UTC().String())
 
 	var buf bytes.Buffer
@@ -184,30 +186,30 @@ func (self *LevelDbStore) WriteJobProgress(jobProgress JobProgress) (err error) 
 
 // ---
 
-func jobKey(job Job) string {
+func jobKey(job types.Job) string {
 	return jobKeyById(job.Id)
 }
 
-func jobKeyById(id JobId) string {
+func jobKeyById(id types.JobId) string {
 	return fmt.Sprintf("%s:%d", jobsKey, id)
 }
 
 func jobNameIndexKey(name string) string {
-	return fmt.Sprintf("JobNameToId:%s")
+	return fmt.Sprintf("types.JobNameToId:%s")
 }
 
-func jobRunsKey(job Job) string {
-	return fmt.Sprintf("JobRunsForJobId:%d:", job.Id)
+func jobRunsKey(job types.Job) string {
+	return fmt.Sprintf("types.JobRunsForJobId:%d:", job.Id)
 }
 
-func jobRunKey(jobRun JobRun) string {
+func jobRunKey(jobRun types.JobRun) string {
 	return jobRunsKey(jobRun.Job) + jobRun.StartedAt.UTC().String()
 }
 
-func jobProgressPrefix(jobRun JobRun) string {
+func jobProgressPrefix(jobRun types.JobRun) string {
 	return jobProgressPrefixByJobRunId(jobRun.Id)
 }
 
-func jobProgressPrefixByJobRunId(id JobRunId) string {
-	return fmt.Sprintf("JobProgressForJobRunId:%d:", id)
+func jobProgressPrefixByJobRunId(id types.JobRunId) string {
+	return fmt.Sprintf("types.JobProgressForJobRunId:%d:", id)
 }
