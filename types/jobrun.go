@@ -3,6 +3,7 @@ package types
 import (
 	"bufio"
 	"io"
+	"os"
 	"os/exec"
 	"path"
 	"syscall"
@@ -12,8 +13,26 @@ import (
 func (self *JobRun) Run(notifyProgress chan JobProgress) (err error) {
 	cmd := new(exec.Cmd)
 	cmd.Path = path.Join(self.ScriptDir, "run-"+self.Job.ScriptSet)
-	setupCmd(cmd)
+
+	if cmd.Path[0] != '/' {
+		// Make absolute path before continuing, as setting Dir will break
+		// relative paths.
+		pwd, err := os.Getwd()
+		if err != nil {
+			return err
+		}
+		cmd.Path = path.Join(pwd, cmd.Path)
+	}
+
 	cmd.Dir = path.Join(self.WorkingDir, "jobs", self.Job.Name)
+	setupCmd(cmd)
+
+	if _, err = os.Stat(cmd.Dir); os.IsNotExist(err) {
+		err = os.MkdirAll(cmd.Dir, 0750|os.ModeDir)
+		if err != nil {
+			return
+		}
+	}
 
 	stdoutPipe, err := cmd.StdoutPipe()
 	if err != nil {
