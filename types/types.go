@@ -88,8 +88,8 @@ type Server interface {
 	SubmitJobRunRequest(JobRunRequest)
 	IsJobRunning(JobId) bool
 
-	SubJobUpdates() (chan interface{})
-	SubJobRunUpdates() (chan interface{})
+	SubJobUpdates() chan interface{}
+	SubJobRunUpdates() chan interface{}
 	Unsub(chan interface{})
 	WaitGroupAdd(n int)
 	WaitGroupDone()
