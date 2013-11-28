@@ -269,4 +269,3 @@ func (self *Server) jobProgressNotifier() (chanOut chan types.JobProgress) {
 	}()
 	return
 }
-

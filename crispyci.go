@@ -1,26 +1,44 @@
 package main
 
 import (
+	"flag"
 	"log"
 	"os"
 	"os/signal"
+	"path"
 	"syscall"
 )
 
+var (
+	workingDir = flag.String("workingDir", "/var/lib/crispyci",
+		"Working directory. Must be writable.")
+	scriptDir = flag.String("scriptDir", "/usr/libexec/crispyci",
+		"Where run scripts are kept. Can be read-only.")
+	listenAddr = flag.String("httpAddr", "127.0.0.1:3000",
+		"Address on which the HTTP interface should listen")
+)
+
 func main() {
-	// TODO: command-line options
+	flag.Parse()
 
 	os.Exit(func() int {
+		if _, err := os.Stat(*workingDir); os.IsNotExist(err) {
+			err = os.MkdirAll(path.Join(*workingDir, "db"), 0750|os.ModeDir)
+			if err != nil {
+				log.Print(err)
+				return 1
+			}
+		}
+
 		store := new(LevelDbStore)
-		err := store.Init("/var/lib/crispyci/db/crispyci.leveldb")
+		err := store.Init(path.Join(*workingDir, "db/crispyci.leveldb"))
 		if err != nil {
 			log.Print(err)
 			return 1
 		}
 		defer store.Close()
 
-		s, err := NewServer(store, "/usr/libexec/crispyci", "/var/lib/crispyci",
-			"127.0.0.1:3000")
+		s, err := NewServer(store, *scriptDir, *workingDir, *listenAddr)
 		if err != nil {
 			log.Print(err)
 			return 1
