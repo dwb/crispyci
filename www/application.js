@@ -27,8 +27,47 @@ if (Modernizr.history) {
   });
 }
 
+CrispyCI.ApplicationController = Ember.Controller.extend({
+  init: function () {
+    this.listenForJobRunUpdates();
+    return this._super()
+  },
+
+  listenForJobRunUpdates: function () {
+    var store = this.get('store');
+    var ws = new WebSocket("ws://localhost:3000/api/v1/job_runs/updates");
+
+    ws.onopen = function () {
+      console.log("Listening for job run updates...");
+    };
+
+    ws.onclose = function () {
+      console.log("Server closed job run update connection");
+    };
+
+    ws.onmessage = function (e) {
+      var payload = JSON.parse(e.data);
+      var id = payload.jobRun.id;
+      var jobId = payload.jobRun.job;
+      payload.jobRuns = [payload.jobRun];
+      delete payload.jobRun;
+
+      store.pushPayload('jobRun', payload);
+
+      var jobRun = store.recordForId('jobRun', id);
+      var job = store.getById('job', jobId);
+      if (job) {
+        var jobRuns = job.get('jobRuns');
+        if (!jobRuns.contains(jobRun)) {
+          jobRuns.pushObject(jobRun);
+        }
+      }
+    };
+  }
+});
+
 CrispyCI.IndexRoute = Ember.Route.extend({
-  beforeModel: function() {
+  beforeModel: function () {
     this.transitionTo('jobs');
   }
 });
@@ -40,6 +79,12 @@ CrispyCI.JobsRoute = Ember.Route.extend({
   setupController: function(controller, model) {
     controller.set('model', model);
   }
+});
+
+CrispyCI.JobController = Ember.ObjectController.extend({
+  lastJobRun: function () {
+    return this.get('jobRuns.lastObject');
+  }.property('jobRuns.lastObject'),
 });
 
 CrispyCI.JobRoute = Ember.Route.extend({
@@ -58,7 +103,7 @@ CrispyCI.ApplicationAdapter = DS.RESTAdapter.extend({
 CrispyCI.JobSerializer = DS.RESTSerializer.extend({
   extractSingle: function(store, type, payload, id, requestType) {
     payload.jobRuns = payload.job.jobRuns;
-    payload.job.jobRuns = payload.jobRuns.mapProperty('id').reverse();
+    payload.job.jobRuns = payload.jobRuns.mapProperty('id');
     return this._super.apply(this, arguments);
   },
 
@@ -82,6 +127,8 @@ CrispyCI.JobRun = DS.Model.extend({
     return moment.duration(this.get('finishedAt') - this.get('startedAt')).humanize();
   }.property('startedAt', 'finishedAt'),
 
+  job: DS.belongsTo('job'),
+
   statusName: function () {
     return CrispyCI.JobStatuses[this.get('status')];
   }.property('status'),
@@ -94,8 +141,6 @@ CrispyCI.JobRun = DS.Model.extend({
 CrispyCI.Job = DS.Model.extend({
   name: DS.attr(),
   scriptSet: DS.attr(),
-  jobRuns: DS.hasMany(CrispyCI.JobRun),
-  lastRun: function () {
-    return this.get('jobRuns').get('firstObject');
-  }.property('jobRuns')
+  jobRuns: DS.hasMany(CrispyCI.JobRun)
 });
+

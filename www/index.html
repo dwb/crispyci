@@ -54,7 +54,7 @@
     </script>
 
     <script type="text/x-handlebars" data-template-name="jobs">
-      <h1>All Jobs</h1>
+      <h1>All Jobs {{stuff}}</h1>
 
       <table class="table">
         <thead>
@@ -67,13 +67,13 @@
           </tr>
         </thead>
         <tbody>
-          {{#each}}
-          <tr {{bind-attr class="lastRun.statusBootstrapType"}}>
+          {{#each itemController="job"}}
+          <tr {{bind-attr class="lastJobRun.statusBootstrapType"}}>
             <td>{{#link-to 'job' this}}{{name}}{{/link-to}}</td>
-            <td>{{lastRun.statusName}}</td>
-            <td>{{lastRun.startedAt}}</td>
-            <td>{{lastRun.finishedAt}}</td>
-            <td>{{lastRun.duration}}</td>
+            <td>{{lastJobRun.statusName}}</td>
+            <td>{{lastJobRun.startedAt}}</td>
+            <td>{{lastJobRun.finishedAt}}</td>
+            <td>{{lastJobRun.duration}}</td>
           </tr>
           {{/each}}
         </tbody>
@@ -117,7 +117,7 @@
     <script src="https://code.jquery.com/jquery-1.10.2.min.js"></script>
     <script src="//netdna.bootstrapcdn.com/bootstrap/3.0.2/js/bootstrap.min.js"></script>
     <script src="//cdnjs.cloudflare.com/ajax/libs/handlebars.js/1.1.2/handlebars.js"></script>
-    <script src="//cdnjs.cloudflare.com/ajax/libs/ember.js/1.1.2/ember.js"></script>
+    <script src="//cdnjs.cloudflare.com/ajax/libs/ember.js/1.2.0/ember.js"></script>
     <script src="//builds.emberjs.com/tags/v1.0.0-beta.3/ember-data.js"></script>
     <script src="//cdnjs.cloudflare.com/ajax/libs/moment.js/2.4.0/moment.min.js"></script>
     <script src="/static/application.js"></script>

@@ -101,7 +101,7 @@ func (self *Server) Serve() {
 				self.runningJobs[jobRun.Job.Id] = &jobRun
 				self.runningJobsMutex.Unlock()
 			} else {
-				err := self.store.WriteJobRun(jobRun)
+				err := self.writeJobRun(jobRun)
 				if err != nil {
 					log.Printf("Error writing job run: %s\n", err)
 				}
@@ -157,8 +157,16 @@ func (self *Server) IsJobRunning(id types.JobId) (out bool) {
 	return
 }
 
+func (self *Server) pubJobUpdate(job types.Job) {
+	self.jobEvents.Pub(job, jobsPubSubChannel)
+}
+
 func (self *Server) SubJobUpdates() (ch chan interface{}) {
 	return self.jobEvents.Sub(jobsPubSubChannel)
+}
+
+func (self *Server) pubJobRunUpdate(jobRun types.JobRun) {
+	self.jobEvents.Pub(jobRun, jobRunsPubSubChannel)
 }
 
 func (self *Server) SubJobRunUpdates() (ch chan interface{}) {
@@ -187,8 +195,12 @@ func (self *Server) JobByName(name string) (*types.Job, error) {
 	return self.store.JobByName(name)
 }
 
-func (self *Server) WriteJob(job types.Job) error {
-	return self.store.WriteJob(job)
+func (self *Server) WriteJob(job types.Job) (err error) {
+	err = self.store.WriteJob(job)
+	if err == nil {
+		self.pubJobUpdate(job)
+	}
+	return
 }
 
 func (self *Server) RunsForJob(job types.Job) ([]types.JobRun, error) {
@@ -201,6 +213,14 @@ func (self *Server) LastRunForJob(job types.Job) (*types.JobRun, error) {
 
 func (self *Server) ProgressForJobRun(jobRun types.JobRun) (*[]types.JobProgress, error) {
 	return self.store.ProgressForJobRun(jobRun)
+}
+
+func (self *Server) writeJobRun(jobRun types.JobRun) (err error) {
+	err = self.store.WriteJobRun(jobRun)
+	if err == nil {
+		self.pubJobRunUpdate(jobRun)
+	}
+	return
 }
 
 // --- Private ---

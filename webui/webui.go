@@ -2,6 +2,7 @@ package webui
 
 import (
 	"bytes"
+	"code.google.com/p/go.net/websocket"
 	"encoding/json"
 	"github.com/gorilla/mux"
 	"net/http"
@@ -34,6 +35,15 @@ type jobShowResponse struct {
 type jobWithRuns struct {
 	types.Job
 	JobRuns []types.JobRun `json:"jobRuns"`
+}
+
+type jobRunWithJobId struct {
+	types.JobRun
+	Job types.JobId `json:"job"`
+}
+
+type jobRunShowResponse struct {
+	JobRun jobRunWithJobId `json:"jobRun"`
 }
 
 const StatusUnprocessableEntity = 422
@@ -120,6 +130,43 @@ func New(server types.Server) (out http.Server) {
 
 		// TODO: location header for new job
 		w.WriteHeader(http.StatusCreated)
+	})
+
+	rApi.
+		Path("/job_runs/updates").
+		HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+
+		wcn, ok := w.(http.CloseNotifier)
+		if !ok {
+			http.Error(w, "No http.CloseNotifier support",
+				http.StatusInternalServerError)
+			return
+		}
+
+		// Don't hold-up shut-down
+		server.WaitGroupDone()
+
+		websocket.Handler(func(ws *websocket.Conn) {
+			jobRuns := server.SubJobRunUpdates()
+			defer server.Unsub(jobRuns)
+
+			for {
+				select {
+				case jobRunI := <-jobRuns:
+					jobRun, ok := jobRunI.(types.JobRun)
+					if !ok {
+						continue
+					}
+
+					resp := jobRunShowResponse{
+						JobRun: jobRunWithJobId{JobRun: jobRun,
+							Job: jobRun.Job.Id}}
+					websocket.JSON.Send(ws, resp)
+				case _ = <-wcn.CloseNotify():
+					return
+				}
+			}
+		}).ServeHTTP(w, request)
 	})
 
 	rApi.
