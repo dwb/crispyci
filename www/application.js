@@ -86,9 +86,9 @@ CrispyCI.JobController = Ember.ObjectController.extend({
     return this.get('jobRuns.lastObject');
   }.property('jobRuns.lastObject'),
 
-  jobRunsReversed: function () {
-    return this.get('jobRuns').slice(0).reverseObjects();
-  }.property('jobRuns.firstObject')
+  jobRuns: function () {
+    return this.get('model.jobRuns').slice(0).reverseObjects();
+  }.property('model.jobRuns.[]')
 });
 
 CrispyCI.JobRoute = Ember.Route.extend({
