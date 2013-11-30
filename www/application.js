@@ -1,18 +1,25 @@
-window.CrispyCI = Ember.Application.create({
-})
+(function () {
 
-CrispyCI.JobStatuses = {
+var defaultDateFormat = function (dt) {
+  var m = moment(dt);
+  return m.format('llll') + ' (' + m.fromNow() + ')';
+};
+
+var jobStatuses = {
   0: "Unknown",
   1: "Started",
   2: "Success",
   3: "Failure"
 }
 
-CrispyCI.JobStatusBootstrapTypes = {
+var jobStatusBootstrapTypes = {
   Started: "started",
   Success: "success",
   Failure: "danger"
 }
+
+window.CrispyCI = Ember.Application.create({
+})
 
 CrispyCI.Router.map(function () {
   this.resource('jobs', function () {
@@ -78,17 +85,61 @@ CrispyCI.JobsRoute = Ember.Route.extend({
   },
   setupController: function(controller, model) {
     controller.set('model', model);
-  }
+  },
+
+  sortProperties: ['name']
+});
+
+CrispyCI.JobsController = Ember.ArrayController.extend({
+  itemController: 'job'
 });
 
 CrispyCI.JobController = Ember.ObjectController.extend({
-  lastJobRun: function () {
-    return this.get('jobRuns.lastObject');
-  }.property('jobRuns.lastObject'),
+  needs: ['jobRuns'],
 
-  jobRuns: function () {
-    return this.get('model.jobRuns').slice(0).reverseObjects();
-  }.property('model.jobRuns.[]')
+  lastJobRun: function () {
+    return CrispyCI.JobRunController.create({
+      content: this.get('jobRuns.lastObject')
+    });
+  }.property('jobRuns.lastObject')
+});
+
+
+CrispyCI.JobRunsController = Ember.ArrayController.extend({
+  itemController: 'jobRun',
+  sortProperties: ['startedAt'],
+  sortAscending: false
+});
+
+CrispyCI.JobRunController = Ember.ObjectController.extend({
+  startedAt: function () {
+    return defaultDateFormat(this.get('model.startedAt'));
+  }.property('model.startedAt'),
+
+  finishedAt: function () {
+    if (this.get('model.status') == 1) {
+      return "";
+    } else {
+      return defaultDateFormat(this.get('model.finishedAt'));
+    }
+  }.property('model.finishedAt', 'model.status'),
+
+  duration: function () {
+    var d = this.get('model.finishedAt') - this.get('model.startedAt');
+    if (d <= 0) {
+      return "";
+    } else {
+      return moment.duration(d).humanize();
+    }
+  }.property('model.startedAt', 'model.finishedAt'),
+
+  statusName: function () {
+    return jobStatuses[this.get('status')];
+  }.property('status'),
+
+  statusBootstrapType: function () {
+    return jobStatusBootstrapTypes[this.get('statusName')];
+  }.property('statusName')
 });
 
 CrispyCI.JobRoute = Ember.Route.extend({
@@ -97,6 +148,7 @@ CrispyCI.JobRoute = Ember.Route.extend({
   },
   setupController: function(controller, model) {
     controller.set('model', model);
+    controller.set('controllers.jobRuns.content', model.get('jobRuns'));
   }
 });
 
@@ -127,19 +179,7 @@ CrispyCI.JobRun = DS.Model.extend({
   status: DS.attr(),
   startedAt: DS.attr('date'),
   finishedAt: DS.attr('date'),
-  duration: function() {
-    return moment.duration(this.get('finishedAt') - this.get('startedAt')).humanize();
-  }.property('startedAt', 'finishedAt'),
-
   job: DS.belongsTo('job'),
-
-  statusName: function () {
-    return CrispyCI.JobStatuses[this.get('status')];
-  }.property('status'),
-
-  statusBootstrapType: function () {
-    return CrispyCI.JobStatusBootstrapTypes[this.get('statusName')];
-  }.property('statusName')
 });
 
 CrispyCI.Job = DS.Model.extend({
@@ -148,3 +188,4 @@ CrispyCI.Job = DS.Model.extend({
   jobRuns: DS.hasMany(CrispyCI.JobRun)
 });
 
+})()

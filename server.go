@@ -95,6 +95,7 @@ func (self *Server) Serve() {
 			}
 
 		case jobRun := <-self.jobStatusChan:
+			self.pubJobRunUpdate(jobRun)
 			if jobRun.Status == types.JobStarted {
 				log.Printf("Started job: %s\n", jobRun.Job.Name)
 				self.runningJobsMutex.Lock()
@@ -150,9 +151,9 @@ func (self *Server) WaitGroupDone() {
 	self.waitGroup.Done()
 }
 
-func (self *Server) IsJobRunning(id types.JobId) (out bool) {
+func (self *Server) RunningJobRunForJob(job types.Job) (out *types.JobRun) {
 	self.runningJobsMutex.Lock()
-	_, out = self.runningJobs[id]
+	out = self.runningJobs[job.Id]
 	self.runningJobsMutex.Unlock()
 	return
 }
@@ -203,8 +204,16 @@ func (self *Server) WriteJob(job types.Job) (err error) {
 	return
 }
 
-func (self *Server) RunsForJob(job types.Job) ([]types.JobRun, error) {
-	return self.store.RunsForJob(job)
+func (self *Server) RunsForJob(job types.Job) (out []types.JobRun, err error) {
+	out, err = self.store.RunsForJob(job)
+	if err != nil {
+		return
+	}
+	running := self.RunningJobRunForJob(job)
+	if running != nil {
+		out = append(out, *running)
+	}
+	return
 }
 
 func (self *Server) LastRunForJob(job types.Job) (*types.JobRun, error) {

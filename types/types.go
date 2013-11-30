@@ -86,7 +86,7 @@ type Server interface {
 	ScriptDir() string
 
 	SubmitJobRunRequest(JobRunRequest)
-	IsJobRunning(JobId) bool
+	RunningJobRunForJob(Job) *JobRun
 
 	SubJobUpdates() chan interface{}
 	SubJobRunUpdates() chan interface{}
