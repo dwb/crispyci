@@ -44,12 +44,17 @@ CrispyCI.ApplicationController = Ember.Controller.extend({
     var store = this.get('store');
     var ws = new WebSocket("ws://localhost:3000/api/v1/job_runs/updates");
 
+    console.log("Connecting for job run updates...");
+    var self = this;
+    var retry = function () { self.listenForJobRunUpdates() };
+
     ws.onopen = function () {
       console.log("Listening for job run updates...");
     };
 
     ws.onclose = function () {
-      console.log("Server closed job run update connection");
+      console.log("Server closed job run update connection. Retrying in 2s...");
+      setTimeout(retry, 2000);
     };
 
     ws.onmessage = function (e) {
