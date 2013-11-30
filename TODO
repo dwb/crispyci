@@ -1,0 +1,4 @@
+* stopping job runs
+* tick started/finished at dates in UI
+* clean old job runs
+* websocket updates for jobs

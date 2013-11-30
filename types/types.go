@@ -1,7 +1,9 @@
 package types
 
 import (
+	"fmt"
 	"math/rand"
+	"strconv"
 	"time"
 )
 
@@ -10,6 +12,19 @@ var (
 )
 
 type JobId uint64
+
+func JobIdFromString(in string) (out JobId, err error) {
+	i, err := stringToUint64(in)
+	if err != nil {
+		return
+	}
+	out = JobId(i)
+	return
+}
+
+func (self JobId) String() string {
+	return fmt.Sprintf("%d", self)
+}
 
 type Job struct {
 	Id        JobId  `json:"id"`
@@ -51,6 +66,19 @@ func (self *JobRunRequest) FindJob(store Store) (job *Job, err error) {
 
 type JobRunId uint64
 
+func (self JobRunId) String() string {
+	return fmt.Sprintf("%d", self)
+}
+
+func JobRunIdFromString(in string) (out JobRunId, err error) {
+	i, err := stringToUint64(in)
+	if err != nil {
+		return
+	}
+	out = JobRunId(i)
+	return
+}
+
 type JobRun struct {
 	Id            JobRunId  `json:"id"`
 	Job           Job       `json:"-"`
@@ -68,9 +96,16 @@ func NewJobRun(job Job, scriptDir string, workingDir string, statusChanges chan 
 }
 
 type JobProgress struct {
-	JobRun JobRun
-	Time   time.Time
-	Line   string
+	JobRun  JobRun
+	Time    time.Time
+	Line    string
+	IsFinal bool
+}
+
+type JobRunProgressRequest struct {
+	JobRunId     JobRunId
+	ProgressChan chan JobProgress
+	StopChan     chan bool
 }
 
 type JobStatus uint8
@@ -82,11 +117,23 @@ const (
 	JobFailed
 )
 
+var jobStatusNames = map[JobStatus]string{
+	JobUnknown:   "Unknown",
+	JobStarted:   "Started",
+	JobSucceeded: "Succeeded",
+	JobFailed:    "Failed",
+}
+
+func (self JobStatus) String() string {
+	return jobStatusNames[self]
+}
+
 type Server interface {
 	ScriptDir() string
 
 	SubmitJobRunRequest(JobRunRequest)
 	RunningJobRunForJob(Job) *JobRun
+	ProgressChanForJobRun(JobRun) (progress chan JobProgress, stop chan bool)
 
 	SubJobUpdates() chan interface{}
 	SubJobRunUpdates() chan interface{}
@@ -99,9 +146,11 @@ type Server interface {
 	JobById(id JobId) (*Job, error)
 	JobByName(name string) (*Job, error)
 	WriteJob(Job) error
+	JobRunById(JobRunId) (*JobRun, error)
 	RunsForJob(Job) ([]JobRun, error)
 	LastRunForJob(Job) (*JobRun, error)
 	ProgressForJobRun(JobRun) (*[]JobProgress, error)
+	DeleteJobRun(JobRun) error
 }
 
 type Store interface {
@@ -111,9 +160,17 @@ type Store interface {
 	JobById(id JobId) (*Job, error)
 	JobByName(name string) (*Job, error)
 	WriteJob(Job) error
+	JobRunById(JobRunId) (*JobRun, error)
 	RunsForJob(Job) ([]JobRun, error)
 	LastRunForJob(Job) (*JobRun, error)
 	WriteJobRun(JobRun) error
 	ProgressForJobRun(JobRun) (*[]JobProgress, error)
 	WriteJobProgress(JobProgress) error
+	DeleteJobRun(JobRun) error
+}
+
+// ---
+
+func stringToUint64(in string) (uint64, error) {
+	return strconv.ParseUint(in, 10, 64)
 }

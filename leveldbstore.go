@@ -17,7 +17,8 @@ type LevelDbStore struct {
 	db *leveldb.DB
 }
 
-const jobsKey = "types.Job:"
+const jobsKey = "Job:"
+const jobRunsKey = "JobRun:"
 
 var (
 	levelDbWriteOptions = leveldbopt.WriteOptions{Sync: true}
@@ -112,11 +113,25 @@ func (self *LevelDbStore) WriteJob(job types.Job) (err error) {
 	return
 }
 
+func (self *LevelDbStore) JobRunById(id types.JobRunId) (jobRun *types.JobRun, err error) {
+	buf, err := self.db.Get([]byte(jobRunKeyById(id)), nil)
+	if err != nil {
+		return
+	}
+
+	dec := gob.NewDecoder(bytes.NewBuffer(buf))
+	err = dec.Decode(&jobRun)
+	if err != nil {
+		return nil, err
+	}
+	return
+}
+
 func (self *LevelDbStore) RunsForJob(job types.Job) (results []types.JobRun, err error) {
 	results = make([]types.JobRun, 0)
 
 	iter := self.db.NewIterator(nil)
-	prefix := jobRunsKey(job)
+	prefix := jobRunsKeyForJob(job)
 	defer iter.Release()
 
 	for iter.Seek([]byte(prefix)); strings.HasPrefix(string(iter.Key()), prefix); iter.Next() {
@@ -147,12 +162,35 @@ func (self *LevelDbStore) LastRunForJob(job types.Job) (result *types.JobRun, er
 }
 
 func (self *LevelDbStore) WriteJobRun(jobRun types.JobRun) (err error) {
-	key := jobRunKey(jobRun)
+	batch := new(leveldb.Batch)
 
 	var buf bytes.Buffer
 	enc := gob.NewEncoder(&buf)
 	enc.Encode(&jobRun)
-	err = self.db.Put([]byte(key), buf.Bytes(), &levelDbWriteOptions)
+	toWrite := buf.Bytes()
+
+	batch.Put([]byte(jobRunKey(jobRun)), toWrite)
+	batch.Put([]byte(jobRunForJobKey(jobRun)), toWrite)
+
+	err = self.db.Write(batch, &levelDbWriteOptions)
+	return
+}
+
+func (self *LevelDbStore) DeleteJobRun(jobRun types.JobRun) (err error) {
+	batch := new(leveldb.Batch)
+
+	iter := self.db.NewIterator(nil)
+	defer iter.Release()
+	prefix := jobProgressPrefix(jobRun)
+
+	for iter.Seek([]byte(prefix)); strings.HasPrefix(string(iter.Key()), prefix); iter.Next() {
+		batch.Delete(iter.Key())
+	}
+
+	batch.Delete([]byte(jobRunForJobKey(jobRun)))
+	batch.Delete([]byte(jobRunKey(jobRun)))
+
+	err = self.db.Write(batch, &levelDbWriteOptions)
 	return
 }
 
@@ -191,19 +229,27 @@ func jobKey(job types.Job) string {
 }
 
 func jobKeyById(id types.JobId) string {
-	return fmt.Sprintf("%s:%d", jobsKey, id)
+	return fmt.Sprintf("%s:%s", jobsKey, id)
 }
 
 func jobNameIndexKey(name string) string {
-	return fmt.Sprintf("types.JobNameToId:%s")
+	return fmt.Sprintf("JobNameToId:%s")
 }
 
-func jobRunsKey(job types.Job) string {
-	return fmt.Sprintf("types.JobRunsForJobId:%d:", job.Id)
+func jobRunsKeyForJob(job types.Job) string {
+	return fmt.Sprintf("JobRunsForJobId:%s:", job.Id)
 }
 
 func jobRunKey(jobRun types.JobRun) string {
-	return jobRunsKey(jobRun.Job) + jobRun.StartedAt.UTC().String()
+	return jobRunKeyById(jobRun.Id)
+}
+
+func jobRunKeyById(id types.JobRunId) string {
+	return fmt.Sprintf("%s:%s", jobRunsKey, id)
+}
+
+func jobRunForJobKey(jobRun types.JobRun) string {
+	return jobRunsKeyForJob(jobRun.Job) + jobRun.StartedAt.UTC().String()
 }
 
 func jobProgressPrefix(jobRun types.JobRun) string {
@@ -211,5 +257,5 @@ func jobProgressPrefix(jobRun types.JobRun) string {
 }
 
 func jobProgressPrefixByJobRunId(id types.JobRunId) string {
-	return fmt.Sprintf("types.JobProgressForJobRunId:%d:", id)
+	return fmt.Sprintf("JobProgressForJobRunId:%s:", id)
 }

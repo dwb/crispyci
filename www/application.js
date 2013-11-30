@@ -18,6 +18,18 @@ var jobStatusBootstrapTypes = {
   Failure: "danger"
 }
 
+var newWebSocket = function (path) {
+  var loc = window.location, url;
+  if (loc.protocol == "https:") {
+    url = "wss://"
+  } else {
+    url = "ws://"
+  }
+  url += loc.host
+
+  return new WebSocket(url + path)
+}
+
 window.CrispyCI = Ember.Application.create({
 })
 
@@ -26,6 +38,7 @@ CrispyCI.Router.map(function () {
     this.route('new');
   });
   this.resource('job', {path: "/jobs/:job_id"});
+  this.resource('jobRun', {path: "/jobRuns/:job_run_id"});
 });
 
 if (Modernizr.history) {
@@ -42,7 +55,7 @@ CrispyCI.ApplicationController = Ember.Controller.extend({
 
   listenForJobRunUpdates: function () {
     var store = this.get('store');
-    var ws = new WebSocket("ws://localhost:3000/api/v1/job_runs/updates");
+    var ws = newWebSocket("/api/v1/jobRuns/updates");
 
     console.log("Connecting for job run updates...");
     var self = this;
@@ -144,7 +157,46 @@ CrispyCI.JobRunController = Ember.ObjectController.extend({
 
   statusBootstrapType: function () {
     return jobStatusBootstrapTypes[this.get('statusName')];
-  }.property('statusName')
+  }.property('statusName'),
+
+  connectProgress: function () {
+    var jobRun = this.get('model');
+    var jobRunId = jobRun.get('id');
+    var ws = newWebSocket("/api/v1/jobRuns/" + jobRunId + "/progress");
+    this.progressWs = ws
+
+    console.log("Connecting for job run " + jobRunId + " progress...");
+
+    ws.onopen = function () {
+      console.log("Connected for job run " + jobRunId + " progress");
+    };
+
+    ws.onclose = function () {
+      console.log("Server closed job run " + jobRunId + " progress connection.");
+    };
+
+    ws.onmessage = function (e) {
+      Ember.$('#jobRunProgress').append(e.data);
+      if (jobRun.get('isRunning')) {
+        var body = Ember.$('body');
+        body.scrollTop(body.height());
+      }
+    };
+  },
+
+  disconnectProgress: function() {
+    if (typeof this.progressWs !== "undefined") {
+      var jobRun = this.get('model');
+      var jobRunId = jobRun.get('id');
+      console.log("Closing job run " + jobRunId + " progress connection.")
+      this.progressWs.close();
+      this.progressWs = undefined;
+    }
+  },
+
+  willDestroy: function () {
+    this.disconnectProgress();
+  }
 });
 
 CrispyCI.JobRoute = Ember.Route.extend({
@@ -154,6 +206,21 @@ CrispyCI.JobRoute = Ember.Route.extend({
   setupController: function(controller, model) {
     controller.set('model', model);
     controller.set('controllers.jobRuns.content', model.get('jobRuns'));
+  }
+});
+
+CrispyCI.JobRunRoute = Ember.Route.extend({
+  model: function (params) {
+    return this.store.find('jobRun', params.job_run_id)
+  },
+
+  setupController: function(controller, model) {
+    controller.set('model', model);
+    controller.connectProgress();
+  },
+
+  exit: function () {
+    this.get('controller').disconnectProgress();
   }
 });
 
@@ -184,13 +251,16 @@ CrispyCI.JobRun = DS.Model.extend({
   status: DS.attr(),
   startedAt: DS.attr('date'),
   finishedAt: DS.attr('date'),
-  job: DS.belongsTo('job'),
+  job: DS.belongsTo('job', {async: true}),
+  isRunning: function () {
+    return this.get('status') == 1;
+  }.property('status'),
 });
 
 CrispyCI.Job = DS.Model.extend({
   name: DS.attr(),
   scriptSet: DS.attr(),
-  jobRuns: DS.hasMany(CrispyCI.JobRun)
+  jobRuns: DS.hasMany('jobRun'),
 });
 
 })()

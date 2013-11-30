@@ -79,6 +79,9 @@ func (self *JobRun) Run(notifyProgress chan JobProgress) (err error) {
 			}
 		}
 
+		notifyProgress <- JobProgress{JobRun: *self, Time: time.Now(),
+			IsFinal: true}
+
 		err = cmd.Wait()
 
 		self.FinishedAt = time.Now()

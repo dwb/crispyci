@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"path"
 	"regexp"
-	"strconv"
 
 	"github.com/dwb/crispyci/types"
 )
@@ -34,7 +33,7 @@ type jobShowResponse struct {
 
 type jobWithRuns struct {
 	types.Job
-	JobRuns []types.JobRun `json:"jobRuns"`
+	JobRuns []jobRunWithJobId `json:"jobRuns"`
 }
 
 type jobRunWithJobId struct {
@@ -54,6 +53,24 @@ func New(server types.Server) (out http.Server) {
 	r := mux.NewRouter()
 	rApi := r.PathPrefix("/api/v1/").Subrouter()
 
+	handleWebsocket := func(w http.ResponseWriter, request *http.Request, f func(http.ResponseWriter, *http.Request, *websocket.Conn, http.CloseNotifier)) {
+		wcn, ok := w.(http.CloseNotifier)
+		if !ok {
+			http.Error(w, "No http.CloseNotifier support",
+				http.StatusInternalServerError)
+			return
+		}
+
+		// Don't hold-up shut-down
+		server.WaitGroupDone()
+
+		websocket.Handler(func(ws *websocket.Conn) {
+			f(w, request, ws, wcn)
+		}).ServeHTTP(w, request)
+
+		server.WaitGroupAdd(1)
+	}
+
 	rApi.
 		Methods("GET").
 		Path("/jobs").
@@ -67,12 +84,11 @@ func New(server types.Server) (out http.Server) {
 
 		jobsWithRuns := make([]jobWithRuns, 0, len(jobs))
 		for _, job := range jobs {
-			jobRuns, err := server.RunsForJob(job)
+			jobRuns, err := getJobWithRuns(&job, server)
 			if err != nil {
 				continue
 			}
-			jobsWithRuns = append(jobsWithRuns,
-				jobWithRuns{Job: job, JobRuns: jobRuns})
+			jobsWithRuns = append(jobsWithRuns, jobRuns)
 		}
 
 		writeHttpJSON(w, jobsIndexResponse{Jobs: jobsWithRuns})
@@ -83,7 +99,7 @@ func New(server types.Server) (out http.Server) {
 		Path("/jobs/{id}").
 		HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 
-		jobId, err := strconv.ParseUint(mux.Vars(request)["id"], 10, 64)
+		jobId, err := types.JobIdFromString(mux.Vars(request)["id"])
 		if err != nil || jobId <= 0 {
 			w.WriteHeader(http.StatusBadRequest)
 			return
@@ -133,20 +149,11 @@ func New(server types.Server) (out http.Server) {
 	})
 
 	rApi.
-		Path("/job_runs/updates").
+		Path("/jobRuns/updates").
 		HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 
-		wcn, ok := w.(http.CloseNotifier)
-		if !ok {
-			http.Error(w, "No http.CloseNotifier support",
-				http.StatusInternalServerError)
-			return
-		}
+		handleWebsocket(w, request, func(w http.ResponseWriter, request *http.Request, ws *websocket.Conn, wcn http.CloseNotifier) {
 
-		// Don't hold-up shut-down
-		server.WaitGroupDone()
-
-		websocket.Handler(func(ws *websocket.Conn) {
 			jobRuns := server.SubJobRunUpdates()
 			defer server.Unsub(jobRuns)
 
@@ -166,7 +173,57 @@ func New(server types.Server) (out http.Server) {
 					return
 				}
 			}
-		}).ServeHTTP(w, request)
+		})
+	})
+
+	rApi.
+		Path("/jobRuns/{id}").
+		HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+
+		jobRun := getJobRun(w, request, server)
+		if jobRun == nil {
+			return
+		}
+
+		writeHttpJSON(w, jobRunShowResponse{
+			JobRun: jobRunWithJobId{JobRun: *jobRun, Job: jobRun.Job.Id}})
+	})
+
+	rApi.
+		Path("/jobRuns/{id}/progress").
+		HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+
+		jobRun := getJobRun(w, request, server)
+		if jobRun == nil {
+			return
+		}
+
+		handleWebsocket(w, request, func(w http.ResponseWriter,
+			request *http.Request, ws *websocket.Conn, wcn http.CloseNotifier) {
+
+			progressChan, stopProgress := server.ProgressChanForJobRun(*jobRun)
+			defer func() {
+				stopProgress <- true
+			}()
+
+			for {
+				select {
+				case progress, isOpen := <-progressChan:
+					if !isOpen {
+						return
+					}
+					out := []byte(progress.Line)
+					_, err := ws.Write(out)
+					if err != nil {
+						return
+					}
+
+				case _ = <-wcn.CloseNotify():
+					return
+				}
+			}
+
+		})
 	})
 
 	rApi.
@@ -231,11 +288,32 @@ func prepareJSONHeaders(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "application/json")
 }
 
+func getJobRun(w http.ResponseWriter, request *http.Request, server types.Server) (jobRun *types.JobRun) {
+	jobRunId, err := types.JobRunIdFromString(mux.Vars(request)["id"])
+	if err != nil || jobRunId <= 0 {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	jobRun, err = server.JobRunById(jobRunId)
+	if jobRun == nil || err != nil {
+		w.WriteHeader(http.StatusNotFound)
+	}
+
+	return
+}
+
 func getJobWithRuns(job *types.Job, server types.Server) (out jobWithRuns, err error) {
 	jobRuns, err := server.RunsForJob(*job)
 	if err != nil {
 		return
 	}
+	jobRunsWithJobId := make([]jobRunWithJobId, len(jobRuns))
 
-	return jobWithRuns{Job: *job, JobRuns: jobRuns}, nil
+	for i, jobRun := range jobRuns {
+		jobRunsWithJobId[i] = jobRunWithJobId{JobRun: jobRun,
+			Job: jobRun.Job.Id}
+	}
+
+	return jobWithRuns{Job: *job, JobRuns: jobRunsWithJobId}, nil
 }
