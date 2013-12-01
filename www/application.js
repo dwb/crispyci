@@ -34,8 +34,29 @@ var newWebSocket = function (path) {
   return new WebSocket(url + path)
 }
 
+
 window.CrispyCI = Ember.Application.create({
 })
+
+// --- Models ---
+
+CrispyCI.JobRun = DS.Model.extend({
+  status: DS.attr(),
+  startedAt: DS.attr('date'),
+  finishedAt: DS.attr('date'),
+  job: DS.belongsTo('job', {async: true}),
+  isRunning: function () {
+    return this.get('status') == 1;
+  }.property('status'),
+});
+
+CrispyCI.Job = DS.Model.extend({
+  name: DS.attr(),
+  scriptSet: DS.attr(),
+  jobRuns: DS.hasMany('jobRun'),
+});
+
+// --- Routes ----
 
 CrispyCI.Router.map(function () {
   this.resource('jobs', function () {
@@ -50,6 +71,50 @@ if (Modernizr.history) {
     location: 'history'
   });
 }
+
+CrispyCI.IndexRoute = Ember.Route.extend({
+  beforeModel: function () {
+    this.transitionTo('jobs');
+  }
+});
+
+CrispyCI.JobsRoute = Ember.Route.extend({
+  model: function (params) {
+    return this.store.find('job');
+  },
+  setupController: function(controller, model) {
+    controller.set('model', model);
+  },
+
+  sortProperties: ['name']
+});
+
+CrispyCI.JobRoute = Ember.Route.extend({
+  model: function (params) {
+    return this.store.find('job', params.job_id)
+  },
+  setupController: function(controller, model) {
+    controller.set('model', model);
+    controller.set('controllers.jobRuns.content', model.get('jobRuns'));
+  }
+});
+
+CrispyCI.JobRunRoute = Ember.Route.extend({
+  model: function (params) {
+    return this.store.find('jobRun', params.job_run_id)
+  },
+
+  setupController: function(controller, model) {
+    controller.set('model', model);
+    controller.connectProgress();
+  },
+
+  exit: function () {
+    this.get('controller').disconnectProgress();
+  }
+});
+
+// --- Controllers ---
 
 CrispyCI.ApplicationController = Ember.Controller.extend({
   init: function () {
@@ -93,23 +158,6 @@ CrispyCI.ApplicationController = Ember.Controller.extend({
       }
     };
   }
-});
-
-CrispyCI.IndexRoute = Ember.Route.extend({
-  beforeModel: function () {
-    this.transitionTo('jobs');
-  }
-});
-
-CrispyCI.JobsRoute = Ember.Route.extend({
-  model: function (params) {
-    return this.store.find('job');
-  },
-  setupController: function(controller, model) {
-    controller.set('model', model);
-  },
-
-  sortProperties: ['name']
 });
 
 CrispyCI.JobsController = Ember.ArrayController.extend({
@@ -219,30 +267,7 @@ CrispyCI.JobRunController = Ember.ObjectController.extend({
   },
 });
 
-CrispyCI.JobRoute = Ember.Route.extend({
-  model: function (params) {
-    return this.store.find('job', params.job_id)
-  },
-  setupController: function(controller, model) {
-    controller.set('model', model);
-    controller.set('controllers.jobRuns.content', model.get('jobRuns'));
-  }
-});
-
-CrispyCI.JobRunRoute = Ember.Route.extend({
-  model: function (params) {
-    return this.store.find('jobRun', params.job_run_id)
-  },
-
-  setupController: function(controller, model) {
-    controller.set('model', model);
-    controller.connectProgress();
-  },
-
-  exit: function () {
-    this.get('controller').disconnectProgress();
-  }
-});
+// --- REST interfaces ---
 
 CrispyCI.ApplicationAdapter = DS.RESTAdapter.extend({
   namespace: apiPathPrefix.replace(/^\//, ''),
@@ -265,22 +290,6 @@ CrispyCI.JobSerializer = DS.RESTSerializer.extend({
     payload.jobRuns = jobRuns;
     return this._super.apply(this, arguments);
   }
-});
-
-CrispyCI.JobRun = DS.Model.extend({
-  status: DS.attr(),
-  startedAt: DS.attr('date'),
-  finishedAt: DS.attr('date'),
-  job: DS.belongsTo('job', {async: true}),
-  isRunning: function () {
-    return this.get('status') == 1;
-  }.property('status'),
-});
-
-CrispyCI.Job = DS.Model.extend({
-  name: DS.attr(),
-  scriptSet: DS.attr(),
-  jobRuns: DS.hasMany('jobRun'),
 });
 
 })()
