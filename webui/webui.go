@@ -228,6 +228,20 @@ func New(server types.Server) (out http.Server) {
 
 	rApi.
 		Methods("POST").
+		Path("/jobRuns/{id}/abort").
+		HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+
+		jobRun := getJobRun(w, request, server)
+		if jobRun == nil {
+			return
+		}
+
+		jobRun.Abort()
+		w.WriteHeader(http.StatusNoContent)
+	})
+
+	rApi.
+		Methods("POST").
 		Path("/github-post-receive").
 		HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 

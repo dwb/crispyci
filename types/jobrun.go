@@ -60,6 +60,9 @@ func (self *JobRun) Run(notifyProgress chan JobProgress) (err error) {
 			}
 		}
 
+		var killChan <-chan time.Time
+		aborted := false
+
 		for {
 			select {
 			case line, ok := <-stdout:
@@ -72,6 +75,15 @@ func (self *JobRun) Run(notifyProgress chan JobProgress) (err error) {
 				if !ok {
 					stderr = nil
 				}
+
+			case <-self.interruptChan:
+				aborted = true
+				self.interruptChan = nil
+				cmd.Process.Signal(syscall.SIGTERM)
+				killChan = time.After(5 * time.Second)
+
+			case <-killChan:
+				cmd.Process.Signal(os.Kill)
 			}
 
 			if stdout == nil && stderr == nil {
@@ -79,13 +91,17 @@ func (self *JobRun) Run(notifyProgress chan JobProgress) (err error) {
 			}
 		}
 
+		self.interruptChan = nil
 		notifyProgress <- JobProgress{JobRun: *self, Time: time.Now(),
 			IsFinal: true}
 
 		err = cmd.Wait()
 
 		self.FinishedAt = time.Now()
-		if err == nil {
+
+		if aborted {
+			self.setStatus(JobAborted)
+		} else if err == nil {
 			self.setStatus(JobSucceeded)
 		} else {
 			self.setStatus(JobFailed)
@@ -94,6 +110,15 @@ func (self *JobRun) Run(notifyProgress chan JobProgress) (err error) {
 
 	return nil
 }
+
+func (self *JobRun) Abort() {
+	select {
+	case self.interruptChan <- true:
+	default:
+	}
+}
+
+// --- Private ---
 
 func (self *JobRun) setStatus(newStatus JobStatus) {
 	if newStatus == JobStarted {

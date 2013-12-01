@@ -1,4 +1,9 @@
+v 1.0:
 * stopping job runs
-* tick started/finished at dates in UI
 * clean old job runs
+* creating/editing jobs UI
+* project/job/branch relationship?
+
+after:
+* tick started/finished at dates in UI
 * websocket updates for jobs

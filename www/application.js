@@ -9,13 +9,15 @@ var jobStatuses = {
   0: "Unknown",
   1: "Started",
   2: "Success",
-  3: "Failure"
+  3: "Failure",
+  4: "Aborted",
 }
 
 var jobStatusBootstrapTypes = {
   Started: "started",
   Success: "success",
-  Failure: "danger"
+  Failure: "danger",
+  Aborted: "danger",
 }
 
 var newWebSocket = function (path) {

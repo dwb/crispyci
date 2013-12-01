@@ -88,11 +88,13 @@ type JobRun struct {
 	StartedAt     time.Time `json:"startedAt"`
 	FinishedAt    time.Time `json:"finishedAt"`
 	statusChanges chan JobRun
+	interruptChan chan bool
 }
 
 func NewJobRun(job Job, scriptDir string, workingDir string, statusChanges chan JobRun) (out JobRun) {
 	return JobRun{Id: JobRunId(randUint64()), Job: job, ScriptDir: scriptDir,
-		WorkingDir: workingDir, statusChanges: statusChanges}
+		WorkingDir: workingDir, statusChanges: statusChanges,
+		interruptChan: make(chan bool, 1)}
 }
 
 type JobProgress struct {
@@ -115,6 +117,7 @@ const (
 	JobStarted
 	JobSucceeded
 	JobFailed
+	JobAborted
 )
 
 var jobStatusNames = map[JobStatus]string{
@@ -122,6 +125,7 @@ var jobStatusNames = map[JobStatus]string{
 	JobStarted:   "Started",
 	JobSucceeded: "Succeeded",
 	JobFailed:    "Failed",
+	JobAborted:   "Aborted",
 }
 
 func (self JobStatus) String() string {
