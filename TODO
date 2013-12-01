@@ -1,5 +1,4 @@
 v 1.0:
-* stopping job runs
 * clean old job runs
 * creating/editing jobs UI
 * project/job/branch relationship?
