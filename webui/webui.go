@@ -231,9 +231,8 @@ func New(server types.Server) (out http.Server) {
 		Path("/github-post-receive").
 		HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 
-		dec := json.NewDecoder(request.Body)
 		var payload githubWebhookPayload
-		err := dec.Decode(&payload)
+		err := json.Unmarshal([]byte(request.FormValue("payload")), &payload)
 		if err != nil {
 			w.WriteHeader(StatusUnprocessableEntity)
 			return
