@@ -177,12 +177,12 @@ func (self *Server) RunningJobRunForJob(job types.Job) (out *types.JobRun) {
 	return
 }
 
-func (self *Server) ProgressChanForJobRun(jobRun types.JobRun) (ch chan types.JobProgress, stop chan bool) {
-	ch = make(chan types.JobProgress, 1)
-	stop = make(chan bool, 1)
+func (self *Server) ProgressChanForJobRun(jobRun types.JobRun) (ch <-chan types.JobProgress, stop chan<- bool) {
+	ch2way := make(chan types.JobProgress, 1)
+	stop2way := make(chan bool, 1)
 	self.requestJobRunProgressChan <- types.JobRunProgressRequest{
-		JobRunId: jobRun.Id, ProgressChan: ch, StopChan: stop}
-	return
+		JobRunId: jobRun.Id, ProgressChan: ch2way, StopChan: stop2way}
+	return ch2way, stop2way
 }
 
 func (self *Server) pubJobUpdate(job types.Job) {

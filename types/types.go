@@ -137,7 +137,7 @@ type Server interface {
 
 	SubmitJobRunRequest(JobRunRequest)
 	RunningJobRunForJob(Job) *JobRun
-	ProgressChanForJobRun(JobRun) (progress chan JobProgress, stop chan bool)
+	ProgressChanForJobRun(JobRun) (progress <-chan JobProgress, stop chan<- bool)
 
 	SubJobUpdates() chan interface{}
 	SubJobRunUpdates() chan interface{}
