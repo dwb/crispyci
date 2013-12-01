@@ -109,11 +109,22 @@
       </table>
     </script>
 
+    <script type="text/x-handlebars" data-template-name="abort-job-run">
+      <a href="#">Abort</a>
+    </script>
+
     <script type="text/x-handlebars" data-template-name="jobRun">
       <h1>Job Run {{id}} for {{job.name}}</h1>
-      <p>
-        {{#link-to 'job' job}}Back to {{job.name}}{{/link-to}}
-      </p>
+
+      <div class="row top-actions">
+        <div class="col-md-6">
+          {{#link-to 'job' job}}Back to {{job.name}}{{/link-to}}
+        </div>
+        <div {{bind-attr class=":col-md-6 :col-right isRunning::invisible"}}>
+          <button class="btn btn-danger" {{bind-attr disabled="aborting:disabled"}} {{action abort}}>{{abortButtonText}}</button>
+        </div>
+      </div>
+
       <pre id="jobRunProgress"></pre>
     </script>
 

@@ -1,5 +1,7 @@
 (function () {
 
+var apiPathPrefix = "/api/v1";
+
 var defaultDateFormat = function (dt) {
   var m = moment(dt);
   return m.format('llll') + ' (' + m.fromNow() + ')';
@@ -57,7 +59,7 @@ CrispyCI.ApplicationController = Ember.Controller.extend({
 
   listenForJobRunUpdates: function () {
     var store = this.get('store');
-    var ws = newWebSocket("/api/v1/jobRuns/updates");
+    var ws = newWebSocket(apiPathPrefix + "/jobRuns/updates");
 
     console.log("Connecting for job run updates...");
     var self = this;
@@ -132,6 +134,22 @@ CrispyCI.JobRunsController = Ember.ArrayController.extend({
 });
 
 CrispyCI.JobRunController = Ember.ObjectController.extend({
+  actions: {
+    abort: function () {
+      console.log("Abort job run " + this.get('model.id'));
+      Ember.$.post(apiPathPrefix + "/jobRuns/" + this.get('model.id') + "/abort");
+      this.set('aborting', true);
+
+      return false;
+    },
+  },
+
+  aborting: false,
+
+  abortButtonText: function () {
+    return this.get('aborting') ? "Aborting..." : "Abort"
+  }.property('aborting'),
+
   startedAt: function () {
     return defaultDateFormat(this.get('model.startedAt'));
   }.property('model.startedAt'),
@@ -164,7 +182,7 @@ CrispyCI.JobRunController = Ember.ObjectController.extend({
   connectProgress: function () {
     var jobRun = this.get('model');
     var jobRunId = jobRun.get('id');
-    var ws = newWebSocket("/api/v1/jobRuns/" + jobRunId + "/progress");
+    var ws = newWebSocket(apiPathPrefix + "/jobRuns/" + jobRunId + "/progress");
     this.progressWs = ws
 
     console.log("Connecting for job run " + jobRunId + " progress...");
@@ -198,7 +216,7 @@ CrispyCI.JobRunController = Ember.ObjectController.extend({
 
   willDestroy: function () {
     this.disconnectProgress();
-  }
+  },
 });
 
 CrispyCI.JobRoute = Ember.Route.extend({
@@ -227,7 +245,7 @@ CrispyCI.JobRunRoute = Ember.Route.extend({
 });
 
 CrispyCI.ApplicationAdapter = DS.RESTAdapter.extend({
-  namespace: 'api/v1'
+  namespace: apiPathPrefix.replace(/^\//, ''),
 });
 
 CrispyCI.JobSerializer = DS.RESTSerializer.extend({
