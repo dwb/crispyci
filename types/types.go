@@ -91,6 +91,11 @@ type JobRun struct {
 	interruptChan chan bool
 }
 
+type JobRunUpdate struct {
+	JobRun
+	Deleted bool
+}
+
 func NewJobRun(job Job, scriptDir string, workingDir string, statusChanges chan JobRun) (out JobRun) {
 	return JobRun{Id: JobRunId(randUint64()), Job: job, ScriptDir: scriptDir,
 		WorkingDir: workingDir, statusChanges: statusChanges,

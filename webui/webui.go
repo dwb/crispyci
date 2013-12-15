@@ -45,6 +45,11 @@ type jobRunShowResponse struct {
 	JobRun jobRunWithJobId `json:"jobRun"`
 }
 
+type jobRunUpdateResponse struct {
+	JobRun  jobRunWithJobId `json:"jobRun"`
+	Deleted bool            `json:"deleted"`
+}
+
 const StatusUnprocessableEntity = 422
 
 var branchRefPattern = regexp.MustCompile(`^refs/heads/(\w+)$`)
@@ -160,14 +165,15 @@ func New(server types.Server) (out http.Server) {
 			for {
 				select {
 				case jobRunI := <-jobRuns:
-					jobRun, ok := jobRunI.(types.JobRun)
+					jobRunUpdate, ok := jobRunI.(types.JobRunUpdate)
 					if !ok {
 						continue
 					}
 
-					resp := jobRunShowResponse{
-						JobRun: jobRunWithJobId{JobRun: jobRun,
-							Job: jobRun.Job.Id}}
+					resp := jobRunUpdateResponse{
+						JobRun: jobRunWithJobId{JobRun: jobRunUpdate.JobRun,
+							Job: jobRunUpdate.Job.Id},
+						Deleted: jobRunUpdate.Deleted}
 					websocket.JSON.Send(ws, resp)
 				case _ = <-wcn.CloseNotify():
 					return

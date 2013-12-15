@@ -12,6 +12,7 @@ import (
 )
 
 const MaxConcurrentJobs = 5
+const KeepNumOldJobRuns = 50
 
 const (
 	jobsPubSubChannel              = "jobs"
@@ -102,9 +103,9 @@ func (self *Server) Serve() {
 			}
 
 		case jobRun := <-self.jobStatusChan:
-			self.pubJobRunUpdate(jobRun)
 			if jobRun.Status == types.JobStarted {
 				log.Printf("Started job: %s\n", jobRun.Job.Name)
+				self.pubJobRunUpdate(jobRun, false)
 				self.runningJobsMutex.Lock()
 				self.runningJobs[jobRun.Job.Id] = &jobRun
 				self.runningJobRuns[jobRun.Id] = &jobRun
@@ -122,6 +123,8 @@ func (self *Server) Serve() {
 				delete(self.runningJobs, job.Id)
 				delete(self.runningJobRuns, jobRun.Id)
 				self.runningJobsMutex.Unlock()
+
+				go self.cleanOldRunsForJob(job)
 
 				if self.shouldStop && len(self.runningJobs) == 0 {
 					break
@@ -193,8 +196,9 @@ func (self *Server) SubJobUpdates() (ch chan interface{}) {
 	return self.jobEvents.Sub(jobsPubSubChannel)
 }
 
-func (self *Server) pubJobRunUpdate(jobRun types.JobRun) {
-	self.jobEvents.Pub(jobRun, jobRunsPubSubChannel)
+func (self *Server) pubJobRunUpdate(jobRun types.JobRun, deleted bool) {
+	self.jobEvents.Pub(types.JobRunUpdate{JobRun: jobRun, Deleted: deleted},
+		jobRunsPubSubChannel)
 }
 
 func (self *Server) SubJobRunUpdates() (ch chan interface{}) {
@@ -274,13 +278,17 @@ func (self *Server) ProgressForJobRun(jobRun types.JobRun) (*[]types.JobProgress
 func (self *Server) writeJobRun(jobRun types.JobRun) (err error) {
 	err = self.store.WriteJobRun(jobRun)
 	if err == nil {
-		self.pubJobRunUpdate(jobRun)
+		self.pubJobRunUpdate(jobRun, false)
 	}
 	return
 }
 
-func (self *Server) DeleteJobRun(jobRun types.JobRun) error {
-	return self.store.DeleteJobRun(jobRun)
+func (self *Server) DeleteJobRun(jobRun types.JobRun) (err error) {
+	err = self.store.DeleteJobRun(jobRun)
+	if err == nil {
+		self.pubJobRunUpdate(jobRun, true)
+	}
+	return
 }
 
 func (self *Server) writeJobProgress(p types.JobProgress) (err error) {
@@ -365,4 +373,21 @@ func (self *Server) feedJobProgress(jobRunId types.JobRunId, outChan chan types.
 			}
 		}
 	}()
+}
+
+func (self *Server) cleanOldRunsForJob(job types.Job) {
+	jobRuns, err := self.store.RunsForJob(job)
+	if err != nil {
+		log.Printf("Error getting job runs for cleaning: %s\n", err)
+		return
+	}
+
+	if end := len(jobRuns) - KeepNumOldJobRuns; end > 0 {
+		for _, jobRun := range jobRuns[:end] {
+			err := self.DeleteJobRun(jobRun)
+			if err != nil {
+				log.Printf("Error deleting old job run: %s\n", err)
+			}
+		}
+	}
 }

@@ -142,18 +142,24 @@ CrispyCI.ApplicationController = Ember.Controller.extend({
     ws.onmessage = function (e) {
       var payload = JSON.parse(e.data);
       var id = payload.jobRun.id;
-      var jobId = payload.jobRun.job;
-      payload.jobRuns = [payload.jobRun];
-      delete payload.jobRun;
-
-      store.pushPayload('jobRun', payload);
-
       var jobRun = store.recordForId('jobRun', id);
-      var job = store.getById('job', jobId);
-      if (job) {
-        var jobRuns = job.get('jobRuns');
-        if (!jobRuns.contains(jobRun)) {
-          jobRuns.pushObject(jobRun);
+
+      if (payload.deleted) {
+        jobRun.unloadRecord();
+      } else {
+        var jobId = payload.jobRun.job;
+        payload.jobRuns = [payload.jobRun];
+        delete payload.jobRun;
+        delete payload.deleted;
+
+        store.pushPayload('jobRun', payload);
+
+        var job = store.getById('job', jobId);
+        if (job) {
+          var jobRuns = job.get('jobRuns');
+          if (!jobRuns.contains(jobRun)) {
+            jobRuns.pushObject(jobRun);
+          }
         }
       }
     };

@@ -130,7 +130,13 @@ func (self *LevelDbStore) JobRunById(id types.JobRunId) (jobRun *types.JobRun, e
 func (self *LevelDbStore) RunsForJob(job types.Job) (results []types.JobRun, err error) {
 	results = make([]types.JobRun, 0)
 
-	iter := self.db.NewIterator(nil)
+	ss, err := self.db.GetSnapshot()
+	if err != nil {
+		return
+	}
+	defer ss.Release()
+
+	iter := ss.NewIterator(nil)
 	prefix := jobRunsKeyForJob(job)
 	defer iter.Release()
 
