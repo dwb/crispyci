@@ -36,6 +36,11 @@ var newWebSocket = function (path) {
 
 
 window.CrispyCI = Ember.Application.create({
+  ready: function () {
+    setInterval(function () {
+      CrispyCI.set('currentTime', new Date())
+    }, 1000);
+  }
 })
 
 // --- Models ---
@@ -206,7 +211,7 @@ CrispyCI.JobRunController = Ember.ObjectController.extend({
 
   startedAt: function () {
     return defaultDateFormat(this.get('model.startedAt'));
-  }.property('model.startedAt'),
+  }.property('model.startedAt', 'CrispyCI.currentTime'),
 
   finishedAt: function () {
     if (this.get('model.status') == 1) {
@@ -214,7 +219,7 @@ CrispyCI.JobRunController = Ember.ObjectController.extend({
     } else {
       return defaultDateFormat(this.get('model.finishedAt'));
     }
-  }.property('model.finishedAt', 'model.status'),
+  }.property('model.finishedAt', 'model.status', 'CrispyCI.currentTime'),
 
   duration: function () {
     var d = this.get('model.finishedAt') - this.get('model.startedAt');

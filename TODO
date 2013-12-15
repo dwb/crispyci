@@ -3,5 +3,4 @@ v 1.0:
 * project/job/branch relationship?
 
 after:
-* tick started/finished at dates in UI
 * websocket updates for jobs
