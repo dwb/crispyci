@@ -13,6 +13,7 @@ import (
 
 const MaxConcurrentJobs = 5
 const KeepNumOldJobRuns = 50
+const MaxQueuedJobs = 10
 
 const (
 	jobsPubSubChannel              = "jobs"
@@ -98,6 +99,12 @@ func (self *Server) Serve() {
 					self.waitingJobRuns[id] = jobQueue
 				}
 				jobQueue.PushFront(req)
+				for lenOver := jobQueue.Len() - MaxQueuedJobs; lenOver > 0; lenOver-- {
+					e := jobQueue.Back()
+					if e != nil {
+						jobQueue.Remove(e)
+					}
+				}
 			} else {
 				req.AllowStart <- true
 			}
