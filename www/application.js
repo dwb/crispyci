@@ -50,7 +50,7 @@ CrispyCI.ProjectRun = DS.Model.extend({
   startedAt: DS.attr('date'),
   finishedAt: DS.attr('date'),
   project: DS.belongsTo('project', {async: true}),
-  isRunning: function () {
+  isBuilding: function () {
     return this.get('status') == 1;
   }.property('status'),
 });
@@ -256,7 +256,7 @@ CrispyCI.ProjectRunController = Ember.ObjectController.extend({
 
     ws.onmessage = function (e) {
       Ember.$('#projectRunProgress').append(e.data);
-      if (projectRun.get('isRunning')) {
+      if (projectRun.get('isBuilding')) {
         var body = Ember.$('body');
         body.scrollTop(body.height());
       }

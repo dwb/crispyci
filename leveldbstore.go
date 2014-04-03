@@ -19,7 +19,7 @@ type LevelDbStore struct {
 }
 
 const projectsKey = "Project:"
-const projectRunsKey = "ProjectRun:"
+const projectBuildsKey = "ProjectBuild:"
 
 var (
 	levelDbWriteOptions = leveldbopt.WriteOptions{Sync: true}
@@ -44,7 +44,7 @@ func (self *LevelDbStore) AllProjects() (projects []types.Project, err error) {
 	projects = make([]types.Project, 0)
 
 	iter := self.db.NewIterator(&leveldbutil.Range{Start: []byte(projectsKey)},
-								nil)
+		nil)
 	defer iter.Release()
 
 	for ; strings.HasPrefix(string(iter.Key()), projectsKey); iter.Next() {
@@ -115,22 +115,22 @@ func (self *LevelDbStore) WriteProject(project types.Project) (err error) {
 	return
 }
 
-func (self *LevelDbStore) ProjectRunById(id types.ProjectRunId) (projectRun *types.ProjectRun, err error) {
-	buf, err := self.db.Get([]byte(projectRunKeyById(id)), nil)
+func (self *LevelDbStore) ProjectBuildById(id types.ProjectBuildId) (projectBuild *types.ProjectBuild, err error) {
+	buf, err := self.db.Get([]byte(projectBuildKeyById(id)), nil)
 	if err != nil {
 		return
 	}
 
 	dec := gob.NewDecoder(bytes.NewBuffer(buf))
-	err = dec.Decode(&projectRun)
+	err = dec.Decode(&projectBuild)
 	if err != nil {
 		return nil, err
 	}
 	return
 }
 
-func (self *LevelDbStore) RunsForProject(project types.Project) (results []types.ProjectRun, err error) {
-	results = make([]types.ProjectRun, 0)
+func (self *LevelDbStore) BuildsForProject(project types.Project) (results []types.ProjectBuild, err error) {
+	results = make([]types.ProjectBuild, 0)
 
 	ss, err := self.db.GetSnapshot()
 	if err != nil {
@@ -138,26 +138,26 @@ func (self *LevelDbStore) RunsForProject(project types.Project) (results []types
 	}
 	defer ss.Release()
 
-	prefix := projectRunsKeyForProject(project)
+	prefix := projectBuildsKeyForProject(project)
 	iter := ss.NewIterator(&leveldbutil.Range{Start: []byte(prefix)}, nil)
 	defer iter.Release()
 
 	for ; strings.HasPrefix(string(iter.Key()), prefix); iter.Next() {
-		var projectRun types.ProjectRun
+		var projectBuild types.ProjectBuild
 		dec := gob.NewDecoder(bytes.NewBuffer(iter.Value()))
-		err := dec.Decode(&projectRun)
+		err := dec.Decode(&projectBuild)
 		if err == nil {
-			results = append(results, projectRun)
+			results = append(results, projectBuild)
 		}
 	}
 	return
 }
 
-func (self *LevelDbStore) LastRunForProject(project types.Project) (result *types.ProjectRun, err error) {
+func (self *LevelDbStore) LastBuildForProject(project types.Project) (result *types.ProjectBuild, err error) {
 	// TODO: we can doubtless do this more efficiently if we don't decode
 	// all previous results, but hey it'll be pretty quick as it is.
 
-	results, err := self.RunsForProject(project)
+	results, err := self.BuildsForProject(project)
 	if err != nil {
 		return
 	}
@@ -169,25 +169,25 @@ func (self *LevelDbStore) LastRunForProject(project types.Project) (result *type
 	return nil, nil
 }
 
-func (self *LevelDbStore) WriteProjectRun(projectRun types.ProjectRun) (err error) {
+func (self *LevelDbStore) WriteProjectBuild(projectBuild types.ProjectBuild) (err error) {
 	batch := new(leveldb.Batch)
 
 	var buf bytes.Buffer
 	enc := gob.NewEncoder(&buf)
-	enc.Encode(&projectRun)
+	enc.Encode(&projectBuild)
 	toWrite := buf.Bytes()
 
-	batch.Put([]byte(projectRunKey(projectRun)), toWrite)
-	batch.Put([]byte(projectRunForProjectKey(projectRun)), toWrite)
+	batch.Put([]byte(projectBuildKey(projectBuild)), toWrite)
+	batch.Put([]byte(projectBuildForProjectKey(projectBuild)), toWrite)
 
 	err = self.db.Write(batch, &levelDbWriteOptions)
 	return
 }
 
-func (self *LevelDbStore) DeleteProjectRun(projectRun types.ProjectRun) (err error) {
+func (self *LevelDbStore) DeleteProjectBuild(projectBuild types.ProjectBuild) (err error) {
 	batch := new(leveldb.Batch)
 
-	prefix := projectProgressPrefix(projectRun)
+	prefix := projectProgressPrefix(projectBuild)
 	iter := self.db.NewIterator(&leveldbutil.Range{Start: []byte(prefix)}, nil)
 	defer iter.Release()
 
@@ -195,17 +195,17 @@ func (self *LevelDbStore) DeleteProjectRun(projectRun types.ProjectRun) (err err
 		batch.Delete(iter.Key())
 	}
 
-	batch.Delete([]byte(projectRunForProjectKey(projectRun)))
-	batch.Delete([]byte(projectRunKey(projectRun)))
+	batch.Delete([]byte(projectBuildForProjectKey(projectBuild)))
+	batch.Delete([]byte(projectBuildKey(projectBuild)))
 
 	err = self.db.Write(batch, &levelDbWriteOptions)
 	return
 }
 
-func (self *LevelDbStore) ProgressForProjectRun(projectRun types.ProjectRun) (progress *[]types.ProjectProgress, err error) {
+func (self *LevelDbStore) ProgressForProjectBuild(projectBuild types.ProjectBuild) (progress *[]types.ProjectProgress, err error) {
 	ps := make([]types.ProjectProgress, 0)
 
-	prefix := projectProgressPrefix(projectRun)
+	prefix := projectProgressPrefix(projectBuild)
 	iter := self.db.NewIterator(&leveldbutil.Range{Start: []byte(prefix)}, nil)
 	defer iter.Release()
 
@@ -221,7 +221,7 @@ func (self *LevelDbStore) ProgressForProjectRun(projectRun types.ProjectRun) (pr
 }
 
 func (self *LevelDbStore) WriteProjectProgress(projectProgress types.ProjectProgress) (err error) {
-	key := []byte(projectProgressPrefix(projectProgress.ProjectRun) + projectProgress.Time.UTC().String())
+	key := []byte(projectProgressPrefix(projectProgress.ProjectBuild) + projectProgress.Time.UTC().String())
 
 	var buf bytes.Buffer
 	enc := gob.NewEncoder(&buf)
@@ -244,26 +244,26 @@ func projectNameIndexKey(name string) string {
 	return fmt.Sprintf("ProjectNameToId:%s")
 }
 
-func projectRunsKeyForProject(project types.Project) string {
-	return fmt.Sprintf("ProjectRunsForProjectId:%s:", project.Id)
+func projectBuildsKeyForProject(project types.Project) string {
+	return fmt.Sprintf("ProjectBuildsForProjectId:%s:", project.Id)
 }
 
-func projectRunKey(projectRun types.ProjectRun) string {
-	return projectRunKeyById(projectRun.Id)
+func projectBuildKey(projectBuild types.ProjectBuild) string {
+	return projectBuildKeyById(projectBuild.Id)
 }
 
-func projectRunKeyById(id types.ProjectRunId) string {
-	return fmt.Sprintf("%s:%s", projectRunsKey, id)
+func projectBuildKeyById(id types.ProjectBuildId) string {
+	return fmt.Sprintf("%s:%s", projectBuildsKey, id)
 }
 
-func projectRunForProjectKey(projectRun types.ProjectRun) string {
-	return projectRunsKeyForProject(projectRun.Project) + projectRun.StartedAt.UTC().String()
+func projectBuildForProjectKey(projectBuild types.ProjectBuild) string {
+	return projectBuildsKeyForProject(projectBuild.Project) + projectBuild.StartedAt.UTC().String()
 }
 
-func projectProgressPrefix(projectRun types.ProjectRun) string {
-	return projectProgressPrefixByProjectRunId(projectRun.Id)
+func projectProgressPrefix(projectBuild types.ProjectBuild) string {
+	return projectProgressPrefixByProjectBuildId(projectBuild.Id)
 }
 
-func projectProgressPrefixByProjectRunId(id types.ProjectRunId) string {
-	return fmt.Sprintf("ProjectProgressForProjectRunId:%s:", id)
+func projectProgressPrefixByProjectBuildId(id types.ProjectBuildId) string {
+	return fmt.Sprintf("ProjectProgressForProjectBuildId:%s:", id)
 }

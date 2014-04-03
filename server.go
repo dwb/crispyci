@@ -12,34 +12,34 @@ import (
 )
 
 const MaxConcurrentProjects = 5
-const KeepNumOldProjectRuns = 50
+const KeepNumOldProjectBuilds = 50
 const MaxQueuedProjects = 10
 
 const (
 	projectsPubSubChannel              = "projects"
-	projectRunsPubSubChannel           = "projectRuns"
+	projectBuildsPubSubChannel         = "projectBuilds"
 	projectProgressPubSubChannelPrefix = "projectProgress:"
 )
 
 type Server struct {
-	scriptDir                 string
-	workingDir                string
-	store                     types.Store
-	concurrentProjectTokens       chan bool
-	runProjectChan                chan types.ProjectRunRequest
-	canStartProjectChan           chan types.ProjectRunRequest
-	projectRunStatusChan             chan types.ProjectRun
-	projectEvents                 *pubsub.PubSub
-	runningProjects               map[types.ProjectId]*types.ProjectRun
-	runningProjectRuns            map[types.ProjectRunId]*types.ProjectRun
-	runningProjectsMutex          *sync.Mutex
-	waitingProjectRuns            map[types.ProjectId]*list.List
-	projectProgressChan           chan types.ProjectProgress
-	requestProjectRunProgressChan chan types.ProjectRunProgressRequest
-	waitGroup                 *sync.WaitGroup
-	requestStopChan           chan bool
-	shouldStop                bool
-	httpServer                http.Server
+	scriptDir                       string
+	workingDir                      string
+	store                           types.Store
+	concurrentProjectTokens         chan bool
+	buildProjectChan                chan types.ProjectBuildRequest
+	canStartProjectChan             chan types.ProjectBuildRequest
+	projectBuildStatusChan          chan types.ProjectBuild
+	projectEvents                   *pubsub.PubSub
+	buildingProjects                map[types.ProjectId]*types.ProjectBuild
+	buildingProjectBuilds           map[types.ProjectBuildId]*types.ProjectBuild
+	buildingProjectsMutex           *sync.Mutex
+	waitingProjectBuilds            map[types.ProjectId]*list.List
+	projectProgressChan             chan types.ProjectProgress
+	requestProjectBuildProgressChan chan types.ProjectBuildProgressRequest
+	waitGroup                       *sync.WaitGroup
+	requestStopChan                 chan bool
+	shouldStop                      bool
+	httpServer                      http.Server
 }
 
 func NewServer(store types.Store, scriptDir string, workingDir string, httpInterfaceAddr string) (server *Server, err error) {
@@ -55,18 +55,18 @@ func NewServer(store types.Store, scriptDir string, workingDir string, httpInter
 	for i := 0; i < cap(server.concurrentProjectTokens); i++ {
 		server.concurrentProjectTokens <- true
 	}
-	server.runProjectChan = make(chan types.ProjectRunRequest, 1)
-	server.canStartProjectChan = make(chan types.ProjectRunRequest, 5)
-	server.projectRunStatusChan = make(chan types.ProjectRun, 5)
+	server.buildProjectChan = make(chan types.ProjectBuildRequest, 1)
+	server.canStartProjectChan = make(chan types.ProjectBuildRequest, 5)
+	server.projectBuildStatusChan = make(chan types.ProjectBuild, 5)
 	server.projectEvents = pubsub.New(1024)
 
-	server.runningProjects = make(map[types.ProjectId]*types.ProjectRun)
-	server.runningProjectRuns = make(map[types.ProjectRunId]*types.ProjectRun)
-	server.runningProjectsMutex = new(sync.Mutex)
-	server.waitingProjectRuns = make(map[types.ProjectId]*list.List)
+	server.buildingProjects = make(map[types.ProjectId]*types.ProjectBuild)
+	server.buildingProjectBuilds = make(map[types.ProjectBuildId]*types.ProjectBuild)
+	server.buildingProjectsMutex = new(sync.Mutex)
+	server.waitingProjectBuilds = make(map[types.ProjectId]*list.List)
 
 	server.projectProgressChan = make(chan types.ProjectProgress)
-	server.requestProjectRunProgressChan = make(chan types.ProjectRunProgressRequest)
+	server.requestProjectBuildProgressChan = make(chan types.ProjectBuildProgressRequest)
 
 	server.waitGroup = new(sync.WaitGroup)
 	server.requestStopChan = make(chan bool, 1)
@@ -86,17 +86,17 @@ func (self *Server) Serve() {
 	log.Println("Accepting projects...")
 	for {
 		select {
-		case req := <-self.runProjectChan:
-			self.runProjectFromRequest(req)
+		case req := <-self.buildProjectChan:
+			self.buildProjectFromRequest(req)
 
 		case req := <-self.canStartProjectChan:
-			if _, ok := self.runningProjects[req.Project.Id]; ok {
-				log.Printf("'%s' is already running; queueing", req.Project.Name)
+			if _, ok := self.buildingProjects[req.Project.Id]; ok {
+				log.Printf("'%s' is already building; queueing", req.Project.Name)
 				id := req.Project.Id
-				projectQueue := self.waitingProjectRuns[id]
+				projectQueue := self.waitingProjectBuilds[id]
 				if projectQueue == nil {
 					projectQueue = list.New()
-					self.waitingProjectRuns[id] = projectQueue
+					self.waitingProjectBuilds[id] = projectQueue
 				}
 				projectQueue.PushFront(req)
 				for lenOver := projectQueue.Len() - MaxQueuedProjects; lenOver > 0; lenOver-- {
@@ -109,40 +109,40 @@ func (self *Server) Serve() {
 				req.AllowStart <- true
 			}
 
-		case projectRun := <-self.projectRunStatusChan:
-			if projectRun.Status == types.ProjectStarted {
-				log.Printf("Started project: %s\n", projectRun.Project.Name)
-				self.pubProjectRunUpdate(projectRun, false)
-				self.runningProjectsMutex.Lock()
-				self.runningProjects[projectRun.Project.Id] = &projectRun
-				self.runningProjectRuns[projectRun.Id] = &projectRun
-				self.runningProjectsMutex.Unlock()
+		case projectBuild := <-self.projectBuildStatusChan:
+			if projectBuild.Status == types.ProjectStarted {
+				log.Printf("Started project: %s\n", projectBuild.Project.Name)
+				self.pubProjectBuildUpdate(projectBuild, false)
+				self.buildingProjectsMutex.Lock()
+				self.buildingProjects[projectBuild.Project.Id] = &projectBuild
+				self.buildingProjectBuilds[projectBuild.Id] = &projectBuild
+				self.buildingProjectsMutex.Unlock()
 			} else {
-				err := self.writeProjectRun(projectRun)
+				err := self.writeProjectBuild(projectBuild)
 				if err != nil {
-					log.Printf("Error writing project run: %s\n", err)
+					log.Printf("Error writing project build: %s\n", err)
 				}
 
-				project := projectRun.Project
+				project := projectBuild.Project
 				log.Printf("Project finished: %s\n", project.Name)
 
-				self.runningProjectsMutex.Lock()
-				delete(self.runningProjects, project.Id)
-				delete(self.runningProjectRuns, projectRun.Id)
-				self.runningProjectsMutex.Unlock()
+				self.buildingProjectsMutex.Lock()
+				delete(self.buildingProjects, project.Id)
+				delete(self.buildingProjectBuilds, projectBuild.Id)
+				self.buildingProjectsMutex.Unlock()
 
-				go self.cleanOldRunsForProject(project)
+				go self.cleanOldBuildsForProject(project)
 
-				if self.shouldStop && len(self.runningProjects) == 0 {
+				if self.shouldStop && len(self.buildingProjects) == 0 {
 					break
 				}
 
 				self.concurrentProjectTokens <- true
-				if projectQueue, ok := self.waitingProjectRuns[project.Id]; ok {
+				if projectQueue, ok := self.waitingProjectBuilds[project.Id]; ok {
 					reqElement := projectQueue.Back()
 					if reqElement != nil {
-						req := projectQueue.Remove(reqElement).(types.ProjectRunRequest)
-						self.runProjectFromRequest(req)
+						req := projectQueue.Remove(reqElement).(types.ProjectBuildRequest)
+						self.buildProjectFromRequest(req)
 					}
 				}
 			}
@@ -150,14 +150,14 @@ func (self *Server) Serve() {
 		case projectProgress := <-self.projectProgressChan:
 			self.writeProjectProgress(projectProgress)
 
-		case req := <-self.requestProjectRunProgressChan:
-			self.feedProjectProgress(req.ProjectRunId, req.ProgressChan, req.StopChan)
+		case req := <-self.requestProjectBuildProgressChan:
+			self.feedProjectProgress(req.ProjectBuildId, req.ProgressChan, req.StopChan)
 
 		case <-self.requestStopChan:
 			self.shouldStop = true
 		}
 
-		if self.shouldStop && len(self.runningProjects) == 0 {
+		if self.shouldStop && len(self.buildingProjects) == 0 {
 			self.waitGroup.Wait()
 			break
 		}
@@ -168,8 +168,8 @@ func (self *Server) Stop() {
 	self.requestStopChan <- true
 }
 
-func (self *Server) SubmitProjectRunRequest(req types.ProjectRunRequest) {
-	self.runProjectChan <- req
+func (self *Server) SubmitProjectBuildRequest(req types.ProjectBuildRequest) {
+	self.buildProjectChan <- req
 }
 
 func (self *Server) WaitGroupAdd(n int) {
@@ -180,18 +180,18 @@ func (self *Server) WaitGroupDone() {
 	self.waitGroup.Done()
 }
 
-func (self *Server) RunningProjectRunForProject(project types.Project) (out *types.ProjectRun) {
-	self.runningProjectsMutex.Lock()
-	out = self.runningProjects[project.Id]
-	self.runningProjectsMutex.Unlock()
+func (self *Server) BuildingProjectBuildForProject(project types.Project) (out *types.ProjectBuild) {
+	self.buildingProjectsMutex.Lock()
+	out = self.buildingProjects[project.Id]
+	self.buildingProjectsMutex.Unlock()
 	return
 }
 
-func (self *Server) ProgressChanForProjectRun(projectRun types.ProjectRun) (ch <-chan types.ProjectProgress, stop chan<- bool) {
+func (self *Server) ProgressChanForProjectBuild(projectBuild types.ProjectBuild) (ch <-chan types.ProjectProgress, stop chan<- bool) {
 	ch2way := make(chan types.ProjectProgress, 1)
 	stop2way := make(chan bool, 1)
-	self.requestProjectRunProgressChan <- types.ProjectRunProgressRequest{
-		ProjectRunId: projectRun.Id, ProgressChan: ch2way, StopChan: stop2way}
+	self.requestProjectBuildProgressChan <- types.ProjectBuildProgressRequest{
+		ProjectBuildId: projectBuild.Id, ProgressChan: ch2way, StopChan: stop2way}
 	return ch2way, stop2way
 }
 
@@ -203,22 +203,22 @@ func (self *Server) SubProjectUpdates() (ch chan interface{}) {
 	return self.projectEvents.Sub(projectsPubSubChannel)
 }
 
-func (self *Server) pubProjectRunUpdate(projectRun types.ProjectRun, deleted bool) {
-	self.projectEvents.Pub(types.ProjectRunUpdate{ProjectRun: projectRun, Deleted: deleted},
-		projectRunsPubSubChannel)
+func (self *Server) pubProjectBuildUpdate(projectBuild types.ProjectBuild, deleted bool) {
+	self.projectEvents.Pub(types.ProjectBuildUpdate{ProjectBuild: projectBuild, Deleted: deleted},
+		projectBuildsPubSubChannel)
 }
 
-func (self *Server) SubProjectRunUpdates() (ch chan interface{}) {
-	return self.projectEvents.Sub(projectRunsPubSubChannel)
+func (self *Server) SubProjectBuildUpdates() (ch chan interface{}) {
+	return self.projectEvents.Sub(projectBuildsPubSubChannel)
 }
 
 func (self *Server) pubProjectProgressUpdate(projectProgress types.ProjectProgress) {
 	self.projectEvents.Pub(projectProgress,
-		projectProgressPubSubChannelPrefix+string(projectProgress.ProjectRun.Id))
+		projectProgressPubSubChannelPrefix+string(projectProgress.ProjectBuild.Id))
 }
 
-func (self *Server) SubProjectProgressUpdates(projectRunId types.ProjectRunId) chan interface{} {
-	return self.projectEvents.Sub(projectProgressPubSubChannelPrefix + string(projectRunId))
+func (self *Server) SubProjectProgressUpdates(projectBuildId types.ProjectBuildId) chan interface{} {
+	return self.projectEvents.Sub(projectProgressPubSubChannelPrefix + string(projectBuildId))
 }
 
 func (self *Server) Unsub(ch chan interface{}) {
@@ -251,49 +251,49 @@ func (self *Server) WriteProject(project types.Project) (err error) {
 	return
 }
 
-func (self *Server) ProjectRunById(id types.ProjectRunId) (projectRun *types.ProjectRun, err error) {
-	self.runningProjectsMutex.Lock()
-	projectRun = self.runningProjectRuns[id]
-	self.runningProjectsMutex.Unlock()
+func (self *Server) ProjectBuildById(id types.ProjectBuildId) (projectBuild *types.ProjectBuild, err error) {
+	self.buildingProjectsMutex.Lock()
+	projectBuild = self.buildingProjectBuilds[id]
+	self.buildingProjectsMutex.Unlock()
 
-	if projectRun == nil {
-		projectRun, err = self.store.ProjectRunById(id)
+	if projectBuild == nil {
+		projectBuild, err = self.store.ProjectBuildById(id)
 	}
 	return
 }
 
-func (self *Server) RunsForProject(project types.Project) (out []types.ProjectRun, err error) {
-	out, err = self.store.RunsForProject(project)
+func (self *Server) BuildsForProject(project types.Project) (out []types.ProjectBuild, err error) {
+	out, err = self.store.BuildsForProject(project)
 	if err != nil {
 		return
 	}
-	running := self.RunningProjectRunForProject(project)
-	if running != nil {
-		out = append(out, *running)
+	building := self.BuildingProjectBuildForProject(project)
+	if building != nil {
+		out = append(out, *building)
 	}
 	return
 }
 
-func (self *Server) LastRunForProject(project types.Project) (*types.ProjectRun, error) {
-	return self.store.LastRunForProject(project)
+func (self *Server) LastBuildForProject(project types.Project) (*types.ProjectBuild, error) {
+	return self.store.LastBuildForProject(project)
 }
 
-func (self *Server) ProgressForProjectRun(projectRun types.ProjectRun) (*[]types.ProjectProgress, error) {
-	return self.store.ProgressForProjectRun(projectRun)
+func (self *Server) ProgressForProjectBuild(projectBuild types.ProjectBuild) (*[]types.ProjectProgress, error) {
+	return self.store.ProgressForProjectBuild(projectBuild)
 }
 
-func (self *Server) writeProjectRun(projectRun types.ProjectRun) (err error) {
-	err = self.store.WriteProjectRun(projectRun)
+func (self *Server) writeProjectBuild(projectBuild types.ProjectBuild) (err error) {
+	err = self.store.WriteProjectBuild(projectBuild)
 	if err == nil {
-		self.pubProjectRunUpdate(projectRun, false)
+		self.pubProjectBuildUpdate(projectBuild, false)
 	}
 	return
 }
 
-func (self *Server) DeleteProjectRun(projectRun types.ProjectRun) (err error) {
-	err = self.store.DeleteProjectRun(projectRun)
+func (self *Server) DeleteProjectBuild(projectBuild types.ProjectBuild) (err error) {
+	err = self.store.DeleteProjectBuild(projectBuild)
 	if err == nil {
-		self.pubProjectRunUpdate(projectRun, true)
+		self.pubProjectBuildUpdate(projectBuild, true)
 	}
 	return
 }
@@ -308,9 +308,9 @@ func (self *Server) writeProjectProgress(p types.ProjectProgress) (err error) {
 
 // --- Private ---
 
-func (self *Server) runProjectFromRequest(req types.ProjectRunRequest) {
+func (self *Server) buildProjectFromRequest(req types.ProjectBuildRequest) {
 	go func() {
-		log.Printf("Received project run request for '%s'\n", req.ProjectName)
+		log.Printf("Received project build request for '%s'\n", req.ProjectName)
 
 		project, err := req.FindProject(self.store)
 		if project == nil {
@@ -330,9 +330,9 @@ func (self *Server) runProjectFromRequest(req types.ProjectRunRequest) {
 		}
 
 		<-self.concurrentProjectTokens
-		projectRun := types.NewProjectRun(*project, self.scriptDir, self.workingDir,
-			self.projectRunStatusChan)
-		err = projectRun.Run(self.projectProgressChan)
+		projectBuild := types.NewProjectBuild(*project, self.scriptDir, self.workingDir,
+			self.projectBuildStatusChan)
+		err = projectBuild.Build(self.projectProgressChan)
 		if err != nil {
 			log.Println(err)
 			return
@@ -340,13 +340,13 @@ func (self *Server) runProjectFromRequest(req types.ProjectRunRequest) {
 	}()
 }
 
-func (self *Server) feedProjectProgress(projectRunId types.ProjectRunId, outChan chan types.ProjectProgress, stopChan chan bool) {
-	inChan := self.SubProjectProgressUpdates(projectRunId)
-	projectRun, err := self.ProjectRunById(projectRunId)
-	if err != nil || projectRun == nil {
+func (self *Server) feedProjectProgress(projectBuildId types.ProjectBuildId, outChan chan types.ProjectProgress, stopChan chan bool) {
+	inChan := self.SubProjectProgressUpdates(projectBuildId)
+	projectBuild, err := self.ProjectBuildById(projectBuildId)
+	if err != nil || projectBuild == nil {
 		return
 	}
-	storedProgress, err := self.ProgressForProjectRun(*projectRun)
+	storedProgress, err := self.ProgressForProjectBuild(*projectBuild)
 
 	go func() {
 		defer self.Unsub(inChan)
@@ -382,18 +382,18 @@ func (self *Server) feedProjectProgress(projectRunId types.ProjectRunId, outChan
 	}()
 }
 
-func (self *Server) cleanOldRunsForProject(project types.Project) {
-	projectRuns, err := self.store.RunsForProject(project)
+func (self *Server) cleanOldBuildsForProject(project types.Project) {
+	projectBuilds, err := self.store.BuildsForProject(project)
 	if err != nil {
-		log.Printf("Error getting project runs for cleaning: %s\n", err)
+		log.Printf("Error getting project builds for cleaning: %s\n", err)
 		return
 	}
 
-	if end := len(projectRuns) - KeepNumOldProjectRuns; end > 0 {
-		for _, projectRun := range projectRuns[:end] {
-			err := self.DeleteProjectRun(projectRun)
+	if end := len(projectBuilds) - KeepNumOldProjectBuilds; end > 0 {
+		for _, projectBuild := range projectBuilds[:end] {
+			err := self.DeleteProjectBuild(projectBuild)
 			if err != nil {
-				log.Printf("Error deleting old project run: %s\n", err)
+				log.Printf("Error deleting old project build: %s\n", err)
 			}
 		}
 	}

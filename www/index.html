@@ -120,7 +120,7 @@
         <div class="col-md-6">
           {{#link-to 'project' project}}Back to {{project.name}}{{/link-to}}
         </div>
-        <div {{bind-attr class=":col-md-6 :col-right isRunning::invisible"}}>
+        <div {{bind-attr class=":col-md-6 :col-right isBuilding::invisible"}}>
           <button class="btn btn-danger" {{bind-attr disabled="aborting:disabled"}} {{action abort}}>{{abortButtonText}}</button>
         </div>
       </div>

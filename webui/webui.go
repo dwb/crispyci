@@ -24,30 +24,30 @@ type githubWebhookPayload struct {
 }
 
 type projectsIndexResponse struct {
-	Projects []projectWithRuns `json:"projects"`
+	Projects []projectWithBuilds `json:"projects"`
 }
 
 type projectShowResponse struct {
-	Project projectWithRuns `json:"project"`
+	Project projectWithBuilds `json:"project"`
 }
 
-type projectWithRuns struct {
+type projectWithBuilds struct {
 	types.Project
-	ProjectRuns []projectRunWithProjectId `json:"projectRuns"`
+	ProjectBuilds []projectBuildWithProjectId `json:"projectBuilds"`
 }
 
-type projectRunWithProjectId struct {
-	types.ProjectRun
+type projectBuildWithProjectId struct {
+	types.ProjectBuild
 	Project types.ProjectId `json:"project"`
 }
 
-type projectRunShowResponse struct {
-	ProjectRun projectRunWithProjectId `json:"projectRun"`
+type projectBuildShowResponse struct {
+	ProjectBuild projectBuildWithProjectId `json:"projectBuild"`
 }
 
-type projectRunUpdateResponse struct {
-	ProjectRun  projectRunWithProjectId `json:"projectRun"`
-	Deleted bool            `json:"deleted"`
+type projectBuildUpdateResponse struct {
+	ProjectBuild projectBuildWithProjectId `json:"projectBuild"`
+	Deleted      bool                      `json:"deleted"`
 }
 
 const StatusUnprocessableEntity = 422
@@ -87,16 +87,16 @@ func New(server types.Server) (out http.Server) {
 			return
 		}
 
-		projectsWithRuns := make([]projectWithRuns, 0, len(projects))
+		projectsWithBuilds := make([]projectWithBuilds, 0, len(projects))
 		for _, project := range projects {
-			projectRuns, err := getProjectWithRuns(&project, server)
+			projectBuilds, err := getProjectWithBuilds(&project, server)
 			if err != nil {
 				continue
 			}
-			projectsWithRuns = append(projectsWithRuns, projectRuns)
+			projectsWithBuilds = append(projectsWithBuilds, projectBuilds)
 		}
 
-		writeHttpJSON(w, projectsIndexResponse{Projects: projectsWithRuns})
+		writeHttpJSON(w, projectsIndexResponse{Projects: projectsWithBuilds})
 	})
 
 	rApi.
@@ -116,7 +116,7 @@ func New(server types.Server) (out http.Server) {
 			return
 		}
 
-		jr, err := getProjectWithRuns(project, server)
+		jr, err := getProjectWithBuilds(project, server)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
@@ -154,26 +154,26 @@ func New(server types.Server) (out http.Server) {
 	})
 
 	rApi.
-		Path("/projectRuns/updates").
+		Path("/projectBuilds/updates").
 		HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 
 		handleWebsocket(w, request, func(w http.ResponseWriter, request *http.Request, ws *websocket.Conn, wcn http.CloseNotifier) {
 
-			projectRuns := server.SubProjectRunUpdates()
-			defer server.Unsub(projectRuns)
+			projectBuilds := server.SubProjectBuildUpdates()
+			defer server.Unsub(projectBuilds)
 
 			for {
 				select {
-				case projectRunI := <-projectRuns:
-					projectRunUpdate, ok := projectRunI.(types.ProjectRunUpdate)
+				case projectBuildI := <-projectBuilds:
+					projectBuildUpdate, ok := projectBuildI.(types.ProjectBuildUpdate)
 					if !ok {
 						continue
 					}
 
-					resp := projectRunUpdateResponse{
-						ProjectRun: projectRunWithProjectId{ProjectRun: projectRunUpdate.ProjectRun,
-							Project: projectRunUpdate.Project.Id},
-						Deleted: projectRunUpdate.Deleted}
+					resp := projectBuildUpdateResponse{
+						ProjectBuild: projectBuildWithProjectId{ProjectBuild: projectBuildUpdate.ProjectBuild,
+							Project: projectBuildUpdate.Project.Id},
+						Deleted: projectBuildUpdate.Deleted}
 					websocket.JSON.Send(ws, resp)
 				case _ = <-wcn.CloseNotify():
 					return
@@ -183,31 +183,31 @@ func New(server types.Server) (out http.Server) {
 	})
 
 	rApi.
-		Path("/projectRuns/{id}").
+		Path("/projectBuilds/{id}").
 		HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 
-		projectRun := getProjectRun(w, request, server)
-		if projectRun == nil {
+		projectBuild := getProjectBuild(w, request, server)
+		if projectBuild == nil {
 			return
 		}
 
-		writeHttpJSON(w, projectRunShowResponse{
-			ProjectRun: projectRunWithProjectId{ProjectRun: *projectRun, Project: projectRun.Project.Id}})
+		writeHttpJSON(w, projectBuildShowResponse{
+			ProjectBuild: projectBuildWithProjectId{ProjectBuild: *projectBuild, Project: projectBuild.Project.Id}})
 	})
 
 	rApi.
-		Path("/projectRuns/{id}/progress").
+		Path("/projectBuilds/{id}/progress").
 		HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 
-		projectRun := getProjectRun(w, request, server)
-		if projectRun == nil {
+		projectBuild := getProjectBuild(w, request, server)
+		if projectBuild == nil {
 			return
 		}
 
 		handleWebsocket(w, request, func(w http.ResponseWriter,
 			request *http.Request, ws *websocket.Conn, wcn http.CloseNotifier) {
 
-			progressChan, stopProgress := server.ProgressChanForProjectRun(*projectRun)
+			progressChan, stopProgress := server.ProgressChanForProjectBuild(*projectBuild)
 			defer func() {
 				stopProgress <- true
 			}()
@@ -234,21 +234,21 @@ func New(server types.Server) (out http.Server) {
 
 	rApi.
 		Methods("POST").
-		Path("/projectRuns/{id}/abort").
+		Path("/projectBuilds/{id}/abort").
 		HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 
-		projectRun := getProjectRun(w, request, server)
-		if projectRun == nil {
+		projectBuild := getProjectBuild(w, request, server)
+		if projectBuild == nil {
 			return
 		}
 
-		projectRun.Abort()
+		projectBuild.Abort()
 		w.WriteHeader(http.StatusNoContent)
 	})
 
 	rApi.
 		Methods("POST").
-		Path("/github-post-receive").
+		Path("/githubPostReceive").
 		HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 
 		var payload githubWebhookPayload
@@ -264,10 +264,10 @@ func New(server types.Server) (out http.Server) {
 			name += "-" + m[1]
 		}
 
-		req := types.NewProjectRunRequest()
+		req := types.NewProjectBuildRequest()
 		req.ProjectName = name
 		req.Source = "Github"
-		server.SubmitProjectRunRequest(req)
+		server.SubmitProjectBuildRequest(req)
 		w.WriteHeader(http.StatusNoContent)
 	})
 
@@ -307,32 +307,32 @@ func prepareJSONHeaders(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "application/json")
 }
 
-func getProjectRun(w http.ResponseWriter, request *http.Request, server types.Server) (projectRun *types.ProjectRun) {
-	projectRunId, err := types.ProjectRunIdFromString(mux.Vars(request)["id"])
-	if err != nil || projectRunId <= 0 {
+func getProjectBuild(w http.ResponseWriter, request *http.Request, server types.Server) (projectBuild *types.ProjectBuild) {
+	projectBuildId, err := types.ProjectBuildIdFromString(mux.Vars(request)["id"])
+	if err != nil || projectBuildId <= 0 {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
-	projectRun, err = server.ProjectRunById(projectRunId)
-	if projectRun == nil || err != nil {
+	projectBuild, err = server.ProjectBuildById(projectBuildId)
+	if projectBuild == nil || err != nil {
 		w.WriteHeader(http.StatusNotFound)
 	}
 
 	return
 }
 
-func getProjectWithRuns(project *types.Project, server types.Server) (out projectWithRuns, err error) {
-	projectRuns, err := server.RunsForProject(*project)
+func getProjectWithBuilds(project *types.Project, server types.Server) (out projectWithBuilds, err error) {
+	projectBuilds, err := server.BuildsForProject(*project)
 	if err != nil {
 		return
 	}
-	projectRunsWithProjectId := make([]projectRunWithProjectId, len(projectRuns))
+	projectBuildsWithProjectId := make([]projectBuildWithProjectId, len(projectBuilds))
 
-	for i, projectRun := range projectRuns {
-		projectRunsWithProjectId[i] = projectRunWithProjectId{ProjectRun: projectRun,
-			Project: projectRun.Project.Id}
+	for i, projectBuild := range projectBuilds {
+		projectBuildsWithProjectId[i] = projectBuildWithProjectId{ProjectBuild: projectBuild,
+			Project: projectBuild.Project.Id}
 	}
 
-	return projectWithRuns{Project: *project, ProjectRuns: projectRunsWithProjectId}, nil
+	return projectWithBuilds{Project: *project, ProjectBuilds: projectBuildsWithProjectId}, nil
 }

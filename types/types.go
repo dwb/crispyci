@@ -27,9 +27,9 @@ func (self ProjectId) String() string {
 }
 
 type Project struct {
-	Id        ProjectId  `json:"id"`
-	Name      string `json:"name"`
-	ScriptSet string `json:"scriptSet"`
+	Id        ProjectId `json:"id"`
+	Name      string    `json:"name"`
+	ScriptSet string    `json:"scriptSet"`
 }
 
 func randUint64() (out uint64) {
@@ -42,90 +42,90 @@ func NewProject() (newProject Project) {
 	return Project{Id: ProjectId(randUint64())}
 }
 
-type ProjectWithRunning struct {
+type ProjectWithBuilding struct {
 	Project
-	Running bool
+	Building bool
 }
 
-type ProjectRunRequest struct {
-	ProjectName    string
-	Source     string
-	ReceivedAt time.Time
-	Project        Project
-	AllowStart chan bool
+type ProjectBuildRequest struct {
+	ProjectName string
+	Source      string
+	ReceivedAt  time.Time
+	Project     Project
+	AllowStart  chan bool
 }
 
-func NewProjectRunRequest() (req ProjectRunRequest) {
-	return ProjectRunRequest{ReceivedAt: time.Now(), AllowStart: make(chan bool)}
+func NewProjectBuildRequest() (req ProjectBuildRequest) {
+	return ProjectBuildRequest{ReceivedAt: time.Now(), AllowStart: make(chan bool)}
 }
 
-func (self *ProjectRunRequest) FindProject(store Store) (project *Project, err error) {
+func (self *ProjectBuildRequest) FindProject(store Store) (project *Project, err error) {
 	project, err = store.ProjectByName(self.ProjectName)
 	return
 }
 
-type ProjectRunId uint64
+type ProjectBuildId uint64
 
-func (self ProjectRunId) String() string {
+func (self ProjectBuildId) String() string {
 	return fmt.Sprintf("%d", self)
 }
 
-func ProjectRunIdFromString(in string) (out ProjectRunId, err error) {
+func ProjectBuildIdFromString(in string) (out ProjectBuildId, err error) {
 	i, err := stringToUint64(in)
 	if err != nil {
 		return
 	}
-	out = ProjectRunId(i)
+	out = ProjectBuildId(i)
 	return
 }
 
-type ProjectRun struct {
-	Id            ProjectRunId  `json:"id"`
-	Project           Project       `json:"-"`
-	ScriptDir     string    `json:"-"`
-	WorkingDir    string    `json:"-"`
-	Status        ProjectRunStatus `json:"status"`
-	StartedAt     time.Time `json:"startedAt"`
-	FinishedAt    time.Time `json:"finishedAt"`
-	statusChanges chan ProjectRun
+type ProjectBuild struct {
+	Id            ProjectBuildId     `json:"id"`
+	Project       Project            `json:"-"`
+	ScriptDir     string             `json:"-"`
+	WorkingDir    string             `json:"-"`
+	Status        ProjectBuildStatus `json:"status"`
+	StartedAt     time.Time          `json:"startedAt"`
+	FinishedAt    time.Time          `json:"finishedAt"`
+	statusChanges chan ProjectBuild
 	interruptChan chan bool
 }
 
-type ProjectRunUpdate struct {
-	ProjectRun
+type ProjectBuildUpdate struct {
+	ProjectBuild
 	Deleted bool
 }
 
-func NewProjectRun(project Project, scriptDir string, workingDir string, statusChanges chan ProjectRun) (out ProjectRun) {
-	return ProjectRun{Id: ProjectRunId(randUint64()), Project: project, ScriptDir: scriptDir,
+func NewProjectBuild(project Project, scriptDir string, workingDir string, statusChanges chan ProjectBuild) (out ProjectBuild) {
+	return ProjectBuild{Id: ProjectBuildId(randUint64()), Project: project, ScriptDir: scriptDir,
 		WorkingDir: workingDir, statusChanges: statusChanges,
 		interruptChan: make(chan bool, 1)}
 }
 
 type ProjectProgress struct {
-	ProjectRun  ProjectRun
-	Time    time.Time
-	Line    string
-	IsFinal bool
+	ProjectBuild ProjectBuild
+	Time         time.Time
+	Line         string
+	IsFinal      bool
 }
 
-type ProjectRunProgressRequest struct {
-	ProjectRunId     ProjectRunId
-	ProgressChan chan ProjectProgress
-	StopChan     chan bool
+type ProjectBuildProgressRequest struct {
+	ProjectBuildId ProjectBuildId
+	ProgressChan   chan ProjectProgress
+	StopChan       chan bool
 }
 
-type ProjectRunStatus uint8
+type ProjectBuildStatus uint8
 
 const (
-	ProjectUnknown ProjectRunStatus = iota
+	ProjectUnknown ProjectBuildStatus = iota
 	ProjectStarted
 	ProjectSucceeded
 	ProjectFailed
 	ProjectAborted
 )
 
-var projectRunStatusNames = map[ProjectRunStatus]string{
+var projectBuildStatusNames = map[ProjectBuildStatus]string{
 	ProjectUnknown:   "Unknown",
 	ProjectStarted:   "Started",
 	ProjectSucceeded: "Succeeded",
@@ -133,19 +133,19 @@ var projectRunStatusNames = map[ProjectRunStatus]string{
 	ProjectAborted:   "Aborted",
 }
 
-func (self ProjectRunStatus) String() string {
-	return projectRunStatusNames[self]
+func (self ProjectBuildStatus) String() string {
+	return projectBuildStatusNames[self]
 }
 
 type Server interface {
 	ScriptDir() string
 
-	SubmitProjectRunRequest(ProjectRunRequest)
-	RunningProjectRunForProject(Project) *ProjectRun
-	ProgressChanForProjectRun(ProjectRun) (progress <-chan ProjectProgress, stop chan<- bool)
+	SubmitProjectBuildRequest(ProjectBuildRequest)
+	BuildingProjectBuildForProject(Project) *ProjectBuild
+	ProgressChanForProjectBuild(ProjectBuild) (progress <-chan ProjectProgress, stop chan<- bool)
 
 	SubProjectUpdates() chan interface{}
-	SubProjectRunUpdates() chan interface{}
+	SubProjectBuildUpdates() chan interface{}
 	Unsub(chan interface{})
 	WaitGroupAdd(n int)
 	WaitGroupDone()
@@ -155,11 +155,11 @@ type Server interface {
 	ProjectById(id ProjectId) (*Project, error)
 	ProjectByName(name string) (*Project, error)
 	WriteProject(Project) error
-	ProjectRunById(ProjectRunId) (*ProjectRun, error)
-	RunsForProject(Project) ([]ProjectRun, error)
-	LastRunForProject(Project) (*ProjectRun, error)
-	ProgressForProjectRun(ProjectRun) (*[]ProjectProgress, error)
-	DeleteProjectRun(ProjectRun) error
+	ProjectBuildById(ProjectBuildId) (*ProjectBuild, error)
+	BuildsForProject(Project) ([]ProjectBuild, error)
+	LastBuildForProject(Project) (*ProjectBuild, error)
+	ProgressForProjectBuild(ProjectBuild) (*[]ProjectProgress, error)
+	DeleteProjectBuild(ProjectBuild) error
 }
 
 type Store interface {
@@ -169,13 +169,13 @@ type Store interface {
 	ProjectById(id ProjectId) (*Project, error)
 	ProjectByName(name string) (*Project, error)
 	WriteProject(Project) error
-	ProjectRunById(ProjectRunId) (*ProjectRun, error)
-	RunsForProject(Project) ([]ProjectRun, error)
-	LastRunForProject(Project) (*ProjectRun, error)
-	WriteProjectRun(ProjectRun) error
-	ProgressForProjectRun(ProjectRun) (*[]ProjectProgress, error)
+	ProjectBuildById(ProjectBuildId) (*ProjectBuild, error)
+	BuildsForProject(Project) ([]ProjectBuild, error)
+	LastBuildForProject(Project) (*ProjectBuild, error)
+	WriteProjectBuild(ProjectBuild) error
+	ProgressForProjectBuild(ProjectBuild) (*[]ProjectProgress, error)
 	WriteProjectProgress(ProjectProgress) error
-	DeleteProjectRun(ProjectRun) error
+	DeleteProjectBuild(ProjectBuild) error
 }
 
 // ---

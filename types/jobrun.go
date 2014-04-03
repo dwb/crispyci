@@ -10,9 +10,9 @@ import (
 	"time"
 )
 
-func (self *ProjectRun) Run(notifyProgress chan ProjectProgress) (err error) {
+func (self *ProjectBuild) Build(notifyProgress chan ProjectProgress) (err error) {
 	cmd := new(exec.Cmd)
-	cmd.Path = path.Join(self.ScriptDir, "run-"+self.Project.ScriptSet)
+	cmd.Path = path.Join(self.ScriptDir, "build-"+self.Project.ScriptSet)
 
 	if cmd.Path[0] != '/' {
 		// Make absolute path before continuing, as setting Dir will break
@@ -56,7 +56,7 @@ func (self *ProjectRun) Run(notifyProgress chan ProjectProgress) (err error) {
 
 		processLine := func(line string, ch chan string) {
 			if line != "" {
-				notifyProgress <- ProjectProgress{ProjectRun: *self, Time: time.Now(), Line: line}
+				notifyProgress <- ProjectProgress{ProjectBuild: *self, Time: time.Now(), Line: line}
 			}
 		}
 
@@ -92,7 +92,7 @@ func (self *ProjectRun) Run(notifyProgress chan ProjectProgress) (err error) {
 		}
 
 		self.interruptChan = nil
-		notifyProgress <- ProjectProgress{ProjectRun: *self, Time: time.Now(),
+		notifyProgress <- ProjectProgress{ProjectBuild: *self, Time: time.Now(),
 			IsFinal: true}
 
 		err = cmd.Wait()
@@ -111,7 +111,7 @@ func (self *ProjectRun) Run(notifyProgress chan ProjectProgress) (err error) {
 	return nil
 }
 
-func (self *ProjectRun) Abort() {
+func (self *ProjectBuild) Abort() {
 	select {
 	case self.interruptChan <- true:
 	default:
@@ -120,7 +120,7 @@ func (self *ProjectRun) Abort() {
 
 // --- Private ---
 
-func (self *ProjectRun) setStatus(newStatus ProjectRunStatus) {
+func (self *ProjectBuild) setStatus(newStatus ProjectBuildStatus) {
 	if newStatus == ProjectStarted {
 		self.StartedAt = time.Now()
 	} else {

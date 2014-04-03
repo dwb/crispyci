@@ -13,7 +13,7 @@ var (
 	workingDir = flag.String("workingDir", "/var/lib/crispyci",
 		"Working directory. Must be writable.")
 	scriptDir = flag.String("scriptDir", "/usr/libexec/crispyci",
-		"Where run scripts are kept. Can be read-only.")
+		"Where build scripts are kept. Can be read-only.")
 	listenAddr = flag.String("httpAddr", "127.0.0.1:3000",
 		"Address on which the HTTP interface should listen")
 )
