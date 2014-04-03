@@ -68,12 +68,12 @@
         </thead>
         <tbody>
           {{#each}}
-          <tr {{bind-attr class="lastProjectRun.statusBootstrapType"}}>
+          <tr {{bind-attr class="lastProjectBuild.statusBootstrapType"}}>
             <td>{{#link-to 'project' this}}{{name}}{{/link-to}}</td>
-            <td>{{lastProjectRun.statusName}}</td>
-            <td>{{lastProjectRun.startedAt}}</td>
-            <td>{{lastProjectRun.finishedAt}}</td>
-            <td>{{lastProjectRun.duration}}</td>
+            <td>{{lastProjectBuild.statusName}}</td>
+            <td>{{lastProjectBuild.startedAt}}</td>
+            <td>{{lastProjectBuild.finishedAt}}</td>
+            <td>{{lastProjectBuild.duration}}</td>
           </tr>
           {{/each}}
         </tbody>
@@ -97,9 +97,9 @@
           </tr>
         </thead>
         <tbody>
-          {{#each controllers.projectRuns}}
+          {{#each controllers.projectBuilds}}
           <tr {{bind-attr class="statusBootstrapType"}}>
-            <td>{{#link-to 'projectRun' this}}{{statusName}}{{/link-to}}</td>
+            <td>{{#link-to 'projectBuild' this}}{{statusName}}{{/link-to}}</td>
             <td>{{startedAt}}</td>
             <td>{{finishedAt}}</td>
             <td>{{duration}}</td>
@@ -109,12 +109,12 @@
       </table>
     </script>
 
-    <script type="text/x-handlebars" data-template-name="abort-project-run">
+    <script type="text/x-handlebars" data-template-name="abort-project-build">
       <a href="#">Abort</a>
     </script>
 
-    <script type="text/x-handlebars" data-template-name="projectRun">
-      <h1>Project Run {{id}} for {{project.name}}</h1>
+    <script type="text/x-handlebars" data-template-name="projectBuild">
+      <h1>Project Build {{id}} for {{project.name}}</h1>
 
       <div class="row top-actions">
         <div class="col-md-6">
@@ -125,7 +125,7 @@
         </div>
       </div>
 
-      <pre id="projectRunProgress"></pre>
+      <pre id="projectBuildProgress"></pre>
     </script>
 
   </head>

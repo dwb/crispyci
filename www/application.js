@@ -7,7 +7,7 @@ var defaultDateFormat = function (dt) {
   return m.format('llll') + ' (' + m.fromNow() + ')';
 };
 
-var projectRunStatuses = {
+var projectBuildStatuses = {
   0: "Unknown",
   1: "Started",
   2: "Success",
@@ -15,7 +15,7 @@ var projectRunStatuses = {
   4: "Aborted",
 }
 
-var projectRunStatusBootstrapTypes = {
+var projectBuildStatusBootstrapTypes = {
   Started: "started",
   Success: "success",
   Failure: "danger",
@@ -45,7 +45,7 @@ window.CrispyCI = Ember.Application.create({
 
 // --- Models ---
 
-CrispyCI.ProjectRun = DS.Model.extend({
+CrispyCI.ProjectBuild = DS.Model.extend({
   status: DS.attr(),
   startedAt: DS.attr('date'),
   finishedAt: DS.attr('date'),
@@ -58,7 +58,7 @@ CrispyCI.ProjectRun = DS.Model.extend({
 CrispyCI.Project = DS.Model.extend({
   name: DS.attr(),
   scriptSet: DS.attr(),
-  projectRuns: DS.hasMany('projectRun'),
+  projectBuilds: DS.hasMany('projectBuild'),
 });
 
 // --- Routes ----
@@ -68,7 +68,7 @@ CrispyCI.Router.map(function () {
     this.route('new');
   });
   this.resource('project', {path: "/projects/:project_id"});
-  this.resource('projectRun', {path: "/projectRuns/:project_run_id"});
+  this.resource('projectBuild', {path: "/projectBuilds/:project_build_id"});
 });
 
 if (Modernizr.history) {
@@ -100,13 +100,13 @@ CrispyCI.ProjectRoute = Ember.Route.extend({
   },
   setupController: function(controller, model) {
     controller.set('model', model);
-    controller.set('controllers.projectRuns.content', model.get('projectRuns'));
+    controller.set('controllers.projectBuilds.content', model.get('projectBuilds'));
   }
 });
 
-CrispyCI.ProjectRunRoute = Ember.Route.extend({
+CrispyCI.ProjectBuildRoute = Ember.Route.extend({
   model: function (params) {
-    return this.store.find('projectRun', params.project_run_id)
+    return this.store.find('projectBuild', params.project_build_id)
   },
 
   setupController: function(controller, model) {
@@ -123,47 +123,47 @@ CrispyCI.ProjectRunRoute = Ember.Route.extend({
 
 CrispyCI.ApplicationController = Ember.Controller.extend({
   init: function () {
-    this.listenForProjectRunUpdates();
+    this.listenForProjectBuildUpdates();
     return this._super()
   },
 
-  listenForProjectRunUpdates: function () {
+  listenForProjectBuildUpdates: function () {
     var store = this.get('store');
-    var ws = newWebSocket(apiPathPrefix + "/projectRuns/updates");
+    var ws = newWebSocket(apiPathPrefix + "/projectBuilds/updates");
 
-    console.log("Connecting for project run updates...");
+    console.log("Connecting for project build updates...");
     var self = this;
-    var retry = function () { self.listenForProjectRunUpdates() };
+    var retry = function () { self.listenForProjectBuildUpdates() };
 
     ws.onopen = function () {
-      console.log("Listening for project run updates...");
+      console.log("Listening for project build updates...");
     };
 
     ws.onclose = function () {
-      console.log("Server closed project run update connection. Retrying in 2s...");
+      console.log("Server closed project build update connection. Retrying in 2s...");
       setTimeout(retry, 2000);
     };
 
     ws.onmessage = function (e) {
       var payload = JSON.parse(e.data);
-      var id = payload.projectRun.id;
-      var projectRun = store.recordForId('projectRun', id);
+      var id = payload.projectBuild.id;
+      var projectBuild = store.recordForId('projectBuild', id);
 
       if (payload.deleted) {
-        projectRun.unloadRecord();
+        projectBuild.unloadRecord();
       } else {
-        var projectId = payload.projectRun.project;
-        payload.projectRuns = [payload.projectRun];
-        delete payload.projectRun;
+        var projectId = payload.projectBuild.project;
+        payload.projectBuilds = [payload.projectBuild];
+        delete payload.projectBuild;
         delete payload.deleted;
 
-        store.pushPayload('projectRun', payload);
+        store.pushPayload('projectBuild', payload);
 
         var project = store.getById('project', projectId);
         if (project) {
-          var projectRuns = project.get('projectRuns');
-          if (!projectRuns.contains(projectRun)) {
-            projectRuns.pushObject(projectRun);
+          var projectBuilds = project.get('projectBuilds');
+          if (!projectBuilds.contains(projectBuild)) {
+            projectBuilds.pushObject(projectBuild);
           }
         }
       }
@@ -176,27 +176,27 @@ CrispyCI.ProjectsController = Ember.ArrayController.extend({
 });
 
 CrispyCI.ProjectController = Ember.ObjectController.extend({
-  needs: ['projectRuns'],
+  needs: ['projectBuilds'],
 
-  lastProjectRun: function () {
-    return CrispyCI.ProjectRunController.create({
-      content: this.get('projectRuns.lastObject')
+  lastProjectBuild: function () {
+    return CrispyCI.ProjectBuildController.create({
+      content: this.get('projectBuilds.lastObject')
     });
-  }.property('projectRuns.lastObject')
+  }.property('projectBuilds.lastObject')
 });
 
 
-CrispyCI.ProjectRunsController = Ember.ArrayController.extend({
-  itemController: 'projectRun',
+CrispyCI.ProjectBuilds = Ember.ArrayController.extend({
+  itemController: 'projectBuild',
   sortProperties: ['startedAt'],
   sortAscending: false
 });
 
-CrispyCI.ProjectRunController = Ember.ObjectController.extend({
+CrispyCI.ProjectBuildController = Ember.ObjectController.extend({
   actions: {
     abort: function () {
-      console.log("Abort project run " + this.get('model.id'));
-      Ember.$.post(apiPathPrefix + "/projectRuns/" + this.get('model.id') + "/abort");
+      console.log("Abort project build " + this.get('model.id'));
+      Ember.$.post(apiPathPrefix + "/projectBuilds/" + this.get('model.id') + "/abort");
       this.set('aborting', true);
 
       return false;
@@ -231,32 +231,32 @@ CrispyCI.ProjectRunController = Ember.ObjectController.extend({
   }.property('model.startedAt', 'model.finishedAt'),
 
   statusName: function () {
-    return projectRunStatuses[this.get('status')];
+    return projectBuildStatuses[this.get('status')];
   }.property('status'),
 
   statusBootstrapType: function () {
-    return projectRunStatusBootstrapTypes[this.get('statusName')];
+    return projectBuildStatusBootstrapTypes[this.get('statusName')];
   }.property('statusName'),
 
   connectProgress: function () {
-    var projectRun = this.get('model');
-    var projectRunId = projectRun.get('id');
-    var ws = newWebSocket(apiPathPrefix + "/projectRuns/" + projectRunId + "/progress");
+    var projectBuild = this.get('model');
+    var projectBuildId = projectBuild.get('id');
+    var ws = newWebSocket(apiPathPrefix + "/projectBuilds/" + projectBuildId + "/progress");
     this.progressWs = ws
 
-    console.log("Connecting for project run " + projectRunId + " progress...");
+    console.log("Connecting for project build " + projectBuildId + " progress...");
 
     ws.onopen = function () {
-      console.log("Connected for project run " + projectRunId + " progress");
+      console.log("Connected for project build " + projectBuildId + " progress");
     };
 
     ws.onclose = function () {
-      console.log("Server closed project run " + projectRunId + " progress connection.");
+      console.log("Server closed project build " + projectBuildId + " progress connection.");
     };
 
     ws.onmessage = function (e) {
-      Ember.$('#projectRunProgress').append(e.data);
-      if (projectRun.get('isBuilding')) {
+      Ember.$('#projectBuildProgress').append(e.data);
+      if (projectBuild.get('isBuilding')) {
         var body = Ember.$('body');
         body.scrollTop(body.height());
       }
@@ -265,9 +265,9 @@ CrispyCI.ProjectRunController = Ember.ObjectController.extend({
 
   disconnectProgress: function() {
     if (typeof this.progressWs !== "undefined") {
-      var projectRun = this.get('model');
-      var projectRunId = projectRun.get('id');
-      console.log("Closing project run " + projectRunId + " progress connection.")
+      var projectBuild = this.get('model');
+      var projectBuildId = projectBuild.get('id');
+      console.log("Closing project build " + projectBuildId + " progress connection.")
       this.progressWs.close();
       this.progressWs = undefined;
     }
@@ -286,19 +286,19 @@ CrispyCI.ApplicationAdapter = DS.RESTAdapter.extend({
 
 CrispyCI.ProjectSerializer = DS.RESTSerializer.extend({
   extractSingle: function(store, type, payload, id, requestType) {
-    payload.projectRuns = payload.project.projectRuns;
-    payload.project.projectRuns = payload.projectRuns.mapProperty('id');
+    payload.projectBuilds = payload.project.projectBuilds;
+    payload.project.projectBuilds = payload.projectBuilds.mapProperty('id');
     return this._super.apply(this, arguments);
   },
 
   extractArray: function(store, type, payload, id, requestType) {
-    projectRuns = [];
+    projectBuilds = [];
     payload.projects.forEach(function (project) {
-      projectRuns = projectRuns.concat(project.projectRuns);
-      project.projectRuns = project.projectRuns.mapProperty('id');
+      projectBuilds = projectBuilds.concat(project.projectBuilds);
+      project.projectBuilds = project.projectBuilds.mapProperty('id');
     });
 
-    payload.projectRuns = projectRuns;
+    payload.projectBuilds = projectBuilds;
     return this._super.apply(this, arguments);
   }
 });
