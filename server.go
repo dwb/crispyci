@@ -11,31 +11,31 @@ import (
 	"github.com/dwb/crispyci/webui"
 )
 
-const MaxConcurrentJobs = 5
-const KeepNumOldJobRuns = 50
-const MaxQueuedJobs = 10
+const MaxConcurrentProjects = 5
+const KeepNumOldProjectRuns = 50
+const MaxQueuedProjects = 10
 
 const (
-	jobsPubSubChannel              = "jobs"
-	jobRunsPubSubChannel           = "jobRuns"
-	jobProgressPubSubChannelPrefix = "jobProgress:"
+	projectsPubSubChannel              = "projects"
+	projectRunsPubSubChannel           = "projectRuns"
+	projectProgressPubSubChannelPrefix = "projectProgress:"
 )
 
 type Server struct {
 	scriptDir                 string
 	workingDir                string
 	store                     types.Store
-	concurrentJobTokens       chan bool
-	runJobChan                chan types.JobRunRequest
-	canStartJobChan           chan types.JobRunRequest
-	jobStatusChan             chan types.JobRun
-	jobEvents                 *pubsub.PubSub
-	runningJobs               map[types.JobId]*types.JobRun
-	runningJobRuns            map[types.JobRunId]*types.JobRun
-	runningJobsMutex          *sync.Mutex
-	waitingJobRuns            map[types.JobId]*list.List
-	jobProgressChan           chan types.JobProgress
-	requestJobRunProgressChan chan types.JobRunProgressRequest
+	concurrentProjectTokens       chan bool
+	runProjectChan                chan types.ProjectRunRequest
+	canStartProjectChan           chan types.ProjectRunRequest
+	projectRunStatusChan             chan types.ProjectRun
+	projectEvents                 *pubsub.PubSub
+	runningProjects               map[types.ProjectId]*types.ProjectRun
+	runningProjectRuns            map[types.ProjectRunId]*types.ProjectRun
+	runningProjectsMutex          *sync.Mutex
+	waitingProjectRuns            map[types.ProjectId]*list.List
+	projectProgressChan           chan types.ProjectProgress
+	requestProjectRunProgressChan chan types.ProjectRunProgressRequest
 	waitGroup                 *sync.WaitGroup
 	requestStopChan           chan bool
 	shouldStop                bool
@@ -50,23 +50,23 @@ func NewServer(store types.Store, scriptDir string, workingDir string, httpInter
 
 	server.store = store
 
-	server.concurrentJobTokens = make(chan bool, MaxConcurrentJobs)
+	server.concurrentProjectTokens = make(chan bool, MaxConcurrentProjects)
 	// Pre-fill with start "tokens"
-	for i := 0; i < cap(server.concurrentJobTokens); i++ {
-		server.concurrentJobTokens <- true
+	for i := 0; i < cap(server.concurrentProjectTokens); i++ {
+		server.concurrentProjectTokens <- true
 	}
-	server.runJobChan = make(chan types.JobRunRequest, 1)
-	server.canStartJobChan = make(chan types.JobRunRequest, 5)
-	server.jobStatusChan = make(chan types.JobRun, 5)
-	server.jobEvents = pubsub.New(1024)
+	server.runProjectChan = make(chan types.ProjectRunRequest, 1)
+	server.canStartProjectChan = make(chan types.ProjectRunRequest, 5)
+	server.projectRunStatusChan = make(chan types.ProjectRun, 5)
+	server.projectEvents = pubsub.New(1024)
 
-	server.runningJobs = make(map[types.JobId]*types.JobRun)
-	server.runningJobRuns = make(map[types.JobRunId]*types.JobRun)
-	server.runningJobsMutex = new(sync.Mutex)
-	server.waitingJobRuns = make(map[types.JobId]*list.List)
+	server.runningProjects = make(map[types.ProjectId]*types.ProjectRun)
+	server.runningProjectRuns = make(map[types.ProjectRunId]*types.ProjectRun)
+	server.runningProjectsMutex = new(sync.Mutex)
+	server.waitingProjectRuns = make(map[types.ProjectId]*list.List)
 
-	server.jobProgressChan = make(chan types.JobProgress)
-	server.requestJobRunProgressChan = make(chan types.JobRunProgressRequest)
+	server.projectProgressChan = make(chan types.ProjectProgress)
+	server.requestProjectRunProgressChan = make(chan types.ProjectRunProgressRequest)
 
 	server.waitGroup = new(sync.WaitGroup)
 	server.requestStopChan = make(chan bool, 1)
@@ -83,81 +83,81 @@ func (self *Server) Serve() {
 		self.httpServer.ListenAndServe()
 	}()
 
-	log.Println("Accepting jobs...")
+	log.Println("Accepting projects...")
 	for {
 		select {
-		case req := <-self.runJobChan:
-			self.runJobFromRequest(req)
+		case req := <-self.runProjectChan:
+			self.runProjectFromRequest(req)
 
-		case req := <-self.canStartJobChan:
-			if _, ok := self.runningJobs[req.Job.Id]; ok {
-				log.Printf("'%s' is already running; queueing", req.Job.Name)
-				id := req.Job.Id
-				jobQueue := self.waitingJobRuns[id]
-				if jobQueue == nil {
-					jobQueue = list.New()
-					self.waitingJobRuns[id] = jobQueue
+		case req := <-self.canStartProjectChan:
+			if _, ok := self.runningProjects[req.Project.Id]; ok {
+				log.Printf("'%s' is already running; queueing", req.Project.Name)
+				id := req.Project.Id
+				projectQueue := self.waitingProjectRuns[id]
+				if projectQueue == nil {
+					projectQueue = list.New()
+					self.waitingProjectRuns[id] = projectQueue
 				}
-				jobQueue.PushFront(req)
-				for lenOver := jobQueue.Len() - MaxQueuedJobs; lenOver > 0; lenOver-- {
-					e := jobQueue.Back()
+				projectQueue.PushFront(req)
+				for lenOver := projectQueue.Len() - MaxQueuedProjects; lenOver > 0; lenOver-- {
+					e := projectQueue.Back()
 					if e != nil {
-						jobQueue.Remove(e)
+						projectQueue.Remove(e)
 					}
 				}
 			} else {
 				req.AllowStart <- true
 			}
 
-		case jobRun := <-self.jobStatusChan:
-			if jobRun.Status == types.JobStarted {
-				log.Printf("Started job: %s\n", jobRun.Job.Name)
-				self.pubJobRunUpdate(jobRun, false)
-				self.runningJobsMutex.Lock()
-				self.runningJobs[jobRun.Job.Id] = &jobRun
-				self.runningJobRuns[jobRun.Id] = &jobRun
-				self.runningJobsMutex.Unlock()
+		case projectRun := <-self.projectRunStatusChan:
+			if projectRun.Status == types.ProjectStarted {
+				log.Printf("Started project: %s\n", projectRun.Project.Name)
+				self.pubProjectRunUpdate(projectRun, false)
+				self.runningProjectsMutex.Lock()
+				self.runningProjects[projectRun.Project.Id] = &projectRun
+				self.runningProjectRuns[projectRun.Id] = &projectRun
+				self.runningProjectsMutex.Unlock()
 			} else {
-				err := self.writeJobRun(jobRun)
+				err := self.writeProjectRun(projectRun)
 				if err != nil {
-					log.Printf("Error writing job run: %s\n", err)
+					log.Printf("Error writing project run: %s\n", err)
 				}
 
-				job := jobRun.Job
-				log.Printf("Job finished: %s\n", job.Name)
+				project := projectRun.Project
+				log.Printf("Project finished: %s\n", project.Name)
 
-				self.runningJobsMutex.Lock()
-				delete(self.runningJobs, job.Id)
-				delete(self.runningJobRuns, jobRun.Id)
-				self.runningJobsMutex.Unlock()
+				self.runningProjectsMutex.Lock()
+				delete(self.runningProjects, project.Id)
+				delete(self.runningProjectRuns, projectRun.Id)
+				self.runningProjectsMutex.Unlock()
 
-				go self.cleanOldRunsForJob(job)
+				go self.cleanOldRunsForProject(project)
 
-				if self.shouldStop && len(self.runningJobs) == 0 {
+				if self.shouldStop && len(self.runningProjects) == 0 {
 					break
 				}
 
-				self.concurrentJobTokens <- true
-				if jobQueue, ok := self.waitingJobRuns[job.Id]; ok {
-					reqElement := jobQueue.Back()
+				self.concurrentProjectTokens <- true
+				if projectQueue, ok := self.waitingProjectRuns[project.Id]; ok {
+					reqElement := projectQueue.Back()
 					if reqElement != nil {
-						req := jobQueue.Remove(reqElement).(types.JobRunRequest)
-						self.runJobFromRequest(req)
+						req := projectQueue.Remove(reqElement).(types.ProjectRunRequest)
+						self.runProjectFromRequest(req)
 					}
 				}
 			}
 
-		case jobProgress := <-self.jobProgressChan:
-			self.writeJobProgress(jobProgress)
+		case projectProgress := <-self.projectProgressChan:
+			self.writeProjectProgress(projectProgress)
 
-		case req := <-self.requestJobRunProgressChan:
-			self.feedJobProgress(req.JobRunId, req.ProgressChan, req.StopChan)
+		case req := <-self.requestProjectRunProgressChan:
+			self.feedProjectProgress(req.ProjectRunId, req.ProgressChan, req.StopChan)
 
 		case <-self.requestStopChan:
 			self.shouldStop = true
 		}
 
-		if self.shouldStop && len(self.runningJobs) == 0 {
+		if self.shouldStop && len(self.runningProjects) == 0 {
 			self.waitGroup.Wait()
 			break
 		}
@@ -168,8 +168,8 @@ func (self *Server) Stop() {
 	self.requestStopChan <- true
 }
 
-func (self *Server) SubmitJobRunRequest(req types.JobRunRequest) {
-	self.runJobChan <- req
+func (self *Server) SubmitProjectRunRequest(req types.ProjectRunRequest) {
+	self.runProjectChan <- req
 }
 
 func (self *Server) WaitGroupAdd(n int) {
@@ -180,49 +180,49 @@ func (self *Server) WaitGroupDone() {
 	self.waitGroup.Done()
 }
 
-func (self *Server) RunningJobRunForJob(job types.Job) (out *types.JobRun) {
-	self.runningJobsMutex.Lock()
-	out = self.runningJobs[job.Id]
-	self.runningJobsMutex.Unlock()
+func (self *Server) RunningProjectRunForProject(project types.Project) (out *types.ProjectRun) {
+	self.runningProjectsMutex.Lock()
+	out = self.runningProjects[project.Id]
+	self.runningProjectsMutex.Unlock()
 	return
 }
 
-func (self *Server) ProgressChanForJobRun(jobRun types.JobRun) (ch <-chan types.JobProgress, stop chan<- bool) {
-	ch2way := make(chan types.JobProgress, 1)
+func (self *Server) ProgressChanForProjectRun(projectRun types.ProjectRun) (ch <-chan types.ProjectProgress, stop chan<- bool) {
+	ch2way := make(chan types.ProjectProgress, 1)
 	stop2way := make(chan bool, 1)
-	self.requestJobRunProgressChan <- types.JobRunProgressRequest{
-		JobRunId: jobRun.Id, ProgressChan: ch2way, StopChan: stop2way}
+	self.requestProjectRunProgressChan <- types.ProjectRunProgressRequest{
+		ProjectRunId: projectRun.Id, ProgressChan: ch2way, StopChan: stop2way}
 	return ch2way, stop2way
 }
 
-func (self *Server) pubJobUpdate(job types.Job) {
-	self.jobEvents.Pub(job, jobsPubSubChannel)
+func (self *Server) pubProjectUpdate(project types.Project) {
+	self.projectEvents.Pub(project, projectsPubSubChannel)
 }
 
-func (self *Server) SubJobUpdates() (ch chan interface{}) {
-	return self.jobEvents.Sub(jobsPubSubChannel)
+func (self *Server) SubProjectUpdates() (ch chan interface{}) {
+	return self.projectEvents.Sub(projectsPubSubChannel)
 }
 
-func (self *Server) pubJobRunUpdate(jobRun types.JobRun, deleted bool) {
-	self.jobEvents.Pub(types.JobRunUpdate{JobRun: jobRun, Deleted: deleted},
-		jobRunsPubSubChannel)
+func (self *Server) pubProjectRunUpdate(projectRun types.ProjectRun, deleted bool) {
+	self.projectEvents.Pub(types.ProjectRunUpdate{ProjectRun: projectRun, Deleted: deleted},
+		projectRunsPubSubChannel)
 }
 
-func (self *Server) SubJobRunUpdates() (ch chan interface{}) {
-	return self.jobEvents.Sub(jobRunsPubSubChannel)
+func (self *Server) SubProjectRunUpdates() (ch chan interface{}) {
+	return self.projectEvents.Sub(projectRunsPubSubChannel)
 }
 
-func (self *Server) pubJobProgressUpdate(jobProgress types.JobProgress) {
-	self.jobEvents.Pub(jobProgress,
-		jobProgressPubSubChannelPrefix+string(jobProgress.JobRun.Id))
+func (self *Server) pubProjectProgressUpdate(projectProgress types.ProjectProgress) {
+	self.projectEvents.Pub(projectProgress,
+		projectProgressPubSubChannelPrefix+string(projectProgress.ProjectRun.Id))
 }
 
-func (self *Server) SubJobProgressUpdates(jobRunId types.JobRunId) chan interface{} {
-	return self.jobEvents.Sub(jobProgressPubSubChannelPrefix + string(jobRunId))
+func (self *Server) SubProjectProgressUpdates(projectRunId types.ProjectRunId) chan interface{} {
+	return self.projectEvents.Sub(projectProgressPubSubChannelPrefix + string(projectRunId))
 }
 
 func (self *Server) Unsub(ch chan interface{}) {
-	self.jobEvents.Unsub(ch)
+	self.projectEvents.Unsub(ch)
 }
 
 func (self *Server) ScriptDir() string {
@@ -231,108 +231,108 @@ func (self *Server) ScriptDir() string {
 
 // --- Store proxies ---
 
-func (self *Server) AllJobs() ([]types.Job, error) {
-	return self.store.AllJobs()
+func (self *Server) AllProjects() ([]types.Project, error) {
+	return self.store.AllProjects()
 }
 
-func (self *Server) JobById(id types.JobId) (*types.Job, error) {
-	return self.store.JobById(id)
+func (self *Server) ProjectById(id types.ProjectId) (*types.Project, error) {
+	return self.store.ProjectById(id)
 }
 
-func (self *Server) JobByName(name string) (*types.Job, error) {
-	return self.store.JobByName(name)
+func (self *Server) ProjectByName(name string) (*types.Project, error) {
+	return self.store.ProjectByName(name)
 }
 
-func (self *Server) WriteJob(job types.Job) (err error) {
-	err = self.store.WriteJob(job)
+func (self *Server) WriteProject(project types.Project) (err error) {
+	err = self.store.WriteProject(project)
 	if err == nil {
-		self.pubJobUpdate(job)
+		self.pubProjectUpdate(project)
 	}
 	return
 }
 
-func (self *Server) JobRunById(id types.JobRunId) (jobRun *types.JobRun, err error) {
-	self.runningJobsMutex.Lock()
-	jobRun = self.runningJobRuns[id]
-	self.runningJobsMutex.Unlock()
+func (self *Server) ProjectRunById(id types.ProjectRunId) (projectRun *types.ProjectRun, err error) {
+	self.runningProjectsMutex.Lock()
+	projectRun = self.runningProjectRuns[id]
+	self.runningProjectsMutex.Unlock()
 
-	if jobRun == nil {
-		jobRun, err = self.store.JobRunById(id)
+	if projectRun == nil {
+		projectRun, err = self.store.ProjectRunById(id)
 	}
 	return
 }
 
-func (self *Server) RunsForJob(job types.Job) (out []types.JobRun, err error) {
-	out, err = self.store.RunsForJob(job)
+func (self *Server) RunsForProject(project types.Project) (out []types.ProjectRun, err error) {
+	out, err = self.store.RunsForProject(project)
 	if err != nil {
 		return
 	}
-	running := self.RunningJobRunForJob(job)
+	running := self.RunningProjectRunForProject(project)
 	if running != nil {
 		out = append(out, *running)
 	}
 	return
 }
 
-func (self *Server) LastRunForJob(job types.Job) (*types.JobRun, error) {
-	return self.store.LastRunForJob(job)
+func (self *Server) LastRunForProject(project types.Project) (*types.ProjectRun, error) {
+	return self.store.LastRunForProject(project)
 }
 
-func (self *Server) ProgressForJobRun(jobRun types.JobRun) (*[]types.JobProgress, error) {
-	return self.store.ProgressForJobRun(jobRun)
+func (self *Server) ProgressForProjectRun(projectRun types.ProjectRun) (*[]types.ProjectProgress, error) {
+	return self.store.ProgressForProjectRun(projectRun)
 }
 
-func (self *Server) writeJobRun(jobRun types.JobRun) (err error) {
-	err = self.store.WriteJobRun(jobRun)
+func (self *Server) writeProjectRun(projectRun types.ProjectRun) (err error) {
+	err = self.store.WriteProjectRun(projectRun)
 	if err == nil {
-		self.pubJobRunUpdate(jobRun, false)
+		self.pubProjectRunUpdate(projectRun, false)
 	}
 	return
 }
 
-func (self *Server) DeleteJobRun(jobRun types.JobRun) (err error) {
-	err = self.store.DeleteJobRun(jobRun)
+func (self *Server) DeleteProjectRun(projectRun types.ProjectRun) (err error) {
+	err = self.store.DeleteProjectRun(projectRun)
 	if err == nil {
-		self.pubJobRunUpdate(jobRun, true)
+		self.pubProjectRunUpdate(projectRun, true)
 	}
 	return
 }
 
-func (self *Server) writeJobProgress(p types.JobProgress) (err error) {
-	err = self.store.WriteJobProgress(p)
+func (self *Server) writeProjectProgress(p types.ProjectProgress) (err error) {
+	err = self.store.WriteProjectProgress(p)
 	if err == nil {
-		self.pubJobProgressUpdate(p)
+		self.pubProjectProgressUpdate(p)
 	}
 	return
 }
 
 // --- Private ---
 
-func (self *Server) runJobFromRequest(req types.JobRunRequest) {
+func (self *Server) runProjectFromRequest(req types.ProjectRunRequest) {
 	go func() {
-		log.Printf("Received job run request for '%s'\n", req.JobName)
+		log.Printf("Received project run request for '%s'\n", req.ProjectName)
 
-		job, err := req.FindJob(self.store)
-		if job == nil {
-			log.Printf("Couldn't find job '%s'\n", req.JobName)
+		project, err := req.FindProject(self.store)
+		if project == nil {
+			log.Printf("Couldn't find project '%s'\n", req.ProjectName)
 			return
 		}
 		if err != nil {
-			log.Printf("Error getting job: %s\n", err)
+			log.Printf("Error getting project: %s\n", err)
 			return
 		}
 
-		req.Job = *job
-		self.canStartJobChan <- req
+		req.Project = *project
+		self.canStartProjectChan <- req
 		shouldStart := <-req.AllowStart
 		if !shouldStart {
 			return
 		}
 
-		<-self.concurrentJobTokens
-		jobRun := types.NewJobRun(*job, self.scriptDir, self.workingDir,
-			self.jobStatusChan)
-		err = jobRun.Run(self.jobProgressChan)
+		<-self.concurrentProjectTokens
+		projectRun := types.NewProjectRun(*project, self.scriptDir, self.workingDir,
+			self.projectRunStatusChan)
+		err = projectRun.Run(self.projectProgressChan)
 		if err != nil {
 			log.Println(err)
 			return
@@ -340,19 +340,19 @@ func (self *Server) runJobFromRequest(req types.JobRunRequest) {
 	}()
 }
 
-func (self *Server) feedJobProgress(jobRunId types.JobRunId, outChan chan types.JobProgress, stopChan chan bool) {
-	inChan := self.SubJobProgressUpdates(jobRunId)
-	jobRun, err := self.JobRunById(jobRunId)
-	if err != nil || jobRun == nil {
+func (self *Server) feedProjectProgress(projectRunId types.ProjectRunId, outChan chan types.ProjectProgress, stopChan chan bool) {
+	inChan := self.SubProjectProgressUpdates(projectRunId)
+	projectRun, err := self.ProjectRunById(projectRunId)
+	if err != nil || projectRun == nil {
 		return
 	}
-	storedProgress, err := self.ProgressForJobRun(*jobRun)
+	storedProgress, err := self.ProgressForProjectRun(*projectRun)
 
 	go func() {
 		defer self.Unsub(inChan)
 		defer close(outChan)
 
-		var p types.JobProgress
+		var p types.ProjectProgress
 		for _, p = range *storedProgress {
 			outChan <- p
 			select {
@@ -369,7 +369,7 @@ func (self *Server) feedJobProgress(jobRunId types.JobRunId, outChan chan types.
 		for {
 			select {
 			case pI := <-inChan:
-				if p, ok := pI.(types.JobProgress); ok && p.Time.After(lastTime) {
+				if p, ok := pI.(types.ProjectProgress); ok && p.Time.After(lastTime) {
 					outChan <- p
 					if p.IsFinal {
 						return
@@ -382,18 +382,18 @@ func (self *Server) feedJobProgress(jobRunId types.JobRunId, outChan chan types.
 	}()
 }
 
-func (self *Server) cleanOldRunsForJob(job types.Job) {
-	jobRuns, err := self.store.RunsForJob(job)
+func (self *Server) cleanOldRunsForProject(project types.Project) {
+	projectRuns, err := self.store.RunsForProject(project)
 	if err != nil {
-		log.Printf("Error getting job runs for cleaning: %s\n", err)
+		log.Printf("Error getting project runs for cleaning: %s\n", err)
 		return
 	}
 
-	if end := len(jobRuns) - KeepNumOldJobRuns; end > 0 {
-		for _, jobRun := range jobRuns[:end] {
-			err := self.DeleteJobRun(jobRun)
+	if end := len(projectRuns) - KeepNumOldProjectRuns; end > 0 {
+		for _, projectRun := range projectRuns[:end] {
+			err := self.DeleteProjectRun(projectRun)
 			if err != nil {
-				log.Printf("Error deleting old job run: %s\n", err)
+				log.Printf("Error deleting old project run: %s\n", err)
 			}
 		}
 	}

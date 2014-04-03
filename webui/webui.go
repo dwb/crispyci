@@ -23,30 +23,30 @@ type githubWebhookPayload struct {
 	Ref string
 }
 
-type jobsIndexResponse struct {
-	Jobs []jobWithRuns `json:"jobs"`
+type projectsIndexResponse struct {
+	Projects []projectWithRuns `json:"projects"`
 }
 
-type jobShowResponse struct {
-	Job jobWithRuns `json:"job"`
+type projectShowResponse struct {
+	Project projectWithRuns `json:"project"`
 }
 
-type jobWithRuns struct {
-	types.Job
-	JobRuns []jobRunWithJobId `json:"jobRuns"`
+type projectWithRuns struct {
+	types.Project
+	ProjectRuns []projectRunWithProjectId `json:"projectRuns"`
 }
 
-type jobRunWithJobId struct {
-	types.JobRun
-	Job types.JobId `json:"job"`
+type projectRunWithProjectId struct {
+	types.ProjectRun
+	Project types.ProjectId `json:"project"`
 }
 
-type jobRunShowResponse struct {
-	JobRun jobRunWithJobId `json:"jobRun"`
+type projectRunShowResponse struct {
+	ProjectRun projectRunWithProjectId `json:"projectRun"`
 }
 
-type jobRunUpdateResponse struct {
-	JobRun  jobRunWithJobId `json:"jobRun"`
+type projectRunUpdateResponse struct {
+	ProjectRun  projectRunWithProjectId `json:"projectRun"`
 	Deleted bool            `json:"deleted"`
 }
 
@@ -78,61 +78,61 @@ func New(server types.Server) (out http.Server) {
 
 	rApi.
 		Methods("GET").
-		Path("/jobs").
+		Path("/projects").
 		HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 
-		jobs, err := server.AllJobs()
+		projects, err := server.AllProjects()
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
 
-		jobsWithRuns := make([]jobWithRuns, 0, len(jobs))
-		for _, job := range jobs {
-			jobRuns, err := getJobWithRuns(&job, server)
+		projectsWithRuns := make([]projectWithRuns, 0, len(projects))
+		for _, project := range projects {
+			projectRuns, err := getProjectWithRuns(&project, server)
 			if err != nil {
 				continue
 			}
-			jobsWithRuns = append(jobsWithRuns, jobRuns)
+			projectsWithRuns = append(projectsWithRuns, projectRuns)
 		}
 
-		writeHttpJSON(w, jobsIndexResponse{Jobs: jobsWithRuns})
+		writeHttpJSON(w, projectsIndexResponse{Projects: projectsWithRuns})
 	})
 
 	rApi.
 		Methods("GET").
-		Path("/jobs/{id}").
+		Path("/projects/{id}").
 		HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 
-		jobId, err := types.JobIdFromString(mux.Vars(request)["id"])
-		if err != nil || jobId <= 0 {
+		projectId, err := types.ProjectIdFromString(mux.Vars(request)["id"])
+		if err != nil || projectId <= 0 {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
 
-		job, err := server.JobById(types.JobId(jobId))
-		if err != nil || job == nil {
+		project, err := server.ProjectById(types.ProjectId(projectId))
+		if err != nil || project == nil {
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
 
-		jr, err := getJobWithRuns(job, server)
+		jr, err := getProjectWithRuns(project, server)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
 
-		writeHttpJSON(w, jobShowResponse{Job: jr})
+		writeHttpJSON(w, projectShowResponse{Project: jr})
 	})
 
 	rApi.
 		Methods("POST").
-		Path("/jobs").
+		Path("/projects").
 		HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 
 		dec := json.NewDecoder(request.Body)
-		newJob := types.NewJob()
-		err := dec.Decode(&newJob)
+		newProject := types.NewProject()
+		err := dec.Decode(&newProject)
 		if err != nil {
 			w.WriteHeader(StatusUnprocessableEntity)
 			w.Write([]byte("JSON parse error\n"))
@@ -141,7 +141,7 @@ func New(server types.Server) (out http.Server) {
 
 		// TODO: input validation
 
-		err = server.WriteJob(newJob)
+		err = server.WriteProject(newProject)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			// TODO: better error message / logging
@@ -149,31 +149,31 @@ func New(server types.Server) (out http.Server) {
 			return
 		}
 
-		// TODO: location header for new job
+		// TODO: location header for new project
 		w.WriteHeader(http.StatusCreated)
 	})
 
 	rApi.
-		Path("/jobRuns/updates").
+		Path("/projectRuns/updates").
 		HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 
 		handleWebsocket(w, request, func(w http.ResponseWriter, request *http.Request, ws *websocket.Conn, wcn http.CloseNotifier) {
 
-			jobRuns := server.SubJobRunUpdates()
-			defer server.Unsub(jobRuns)
+			projectRuns := server.SubProjectRunUpdates()
+			defer server.Unsub(projectRuns)
 
 			for {
 				select {
-				case jobRunI := <-jobRuns:
-					jobRunUpdate, ok := jobRunI.(types.JobRunUpdate)
+				case projectRunI := <-projectRuns:
+					projectRunUpdate, ok := projectRunI.(types.ProjectRunUpdate)
 					if !ok {
 						continue
 					}
 
-					resp := jobRunUpdateResponse{
-						JobRun: jobRunWithJobId{JobRun: jobRunUpdate.JobRun,
-							Job: jobRunUpdate.Job.Id},
-						Deleted: jobRunUpdate.Deleted}
+					resp := projectRunUpdateResponse{
+						ProjectRun: projectRunWithProjectId{ProjectRun: projectRunUpdate.ProjectRun,
+							Project: projectRunUpdate.Project.Id},
+						Deleted: projectRunUpdate.Deleted}
 					websocket.JSON.Send(ws, resp)
 				case _ = <-wcn.CloseNotify():
 					return
@@ -183,31 +183,31 @@ func New(server types.Server) (out http.Server) {
 	})
 
 	rApi.
-		Path("/jobRuns/{id}").
+		Path("/projectRuns/{id}").
 		HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 
-		jobRun := getJobRun(w, request, server)
-		if jobRun == nil {
+		projectRun := getProjectRun(w, request, server)
+		if projectRun == nil {
 			return
 		}
 
-		writeHttpJSON(w, jobRunShowResponse{
-			JobRun: jobRunWithJobId{JobRun: *jobRun, Job: jobRun.Job.Id}})
+		writeHttpJSON(w, projectRunShowResponse{
+			ProjectRun: projectRunWithProjectId{ProjectRun: *projectRun, Project: projectRun.Project.Id}})
 	})
 
 	rApi.
-		Path("/jobRuns/{id}/progress").
+		Path("/projectRuns/{id}/progress").
 		HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 
-		jobRun := getJobRun(w, request, server)
-		if jobRun == nil {
+		projectRun := getProjectRun(w, request, server)
+		if projectRun == nil {
 			return
 		}
 
 		handleWebsocket(w, request, func(w http.ResponseWriter,
 			request *http.Request, ws *websocket.Conn, wcn http.CloseNotifier) {
 
-			progressChan, stopProgress := server.ProgressChanForJobRun(*jobRun)
+			progressChan, stopProgress := server.ProgressChanForProjectRun(*projectRun)
 			defer func() {
 				stopProgress <- true
 			}()
@@ -234,15 +234,15 @@ func New(server types.Server) (out http.Server) {
 
 	rApi.
 		Methods("POST").
-		Path("/jobRuns/{id}/abort").
+		Path("/projectRuns/{id}/abort").
 		HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 
-		jobRun := getJobRun(w, request, server)
-		if jobRun == nil {
+		projectRun := getProjectRun(w, request, server)
+		if projectRun == nil {
 			return
 		}
 
-		jobRun.Abort()
+		projectRun.Abort()
 		w.WriteHeader(http.StatusNoContent)
 	})
 
@@ -264,10 +264,10 @@ func New(server types.Server) (out http.Server) {
 			name += "-" + m[1]
 		}
 
-		req := types.NewJobRunRequest()
-		req.JobName = name
+		req := types.NewProjectRunRequest()
+		req.ProjectName = name
 		req.Source = "Github"
-		server.SubmitJobRunRequest(req)
+		server.SubmitProjectRunRequest(req)
 		w.WriteHeader(http.StatusNoContent)
 	})
 
@@ -307,32 +307,32 @@ func prepareJSONHeaders(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "application/json")
 }
 
-func getJobRun(w http.ResponseWriter, request *http.Request, server types.Server) (jobRun *types.JobRun) {
-	jobRunId, err := types.JobRunIdFromString(mux.Vars(request)["id"])
-	if err != nil || jobRunId <= 0 {
+func getProjectRun(w http.ResponseWriter, request *http.Request, server types.Server) (projectRun *types.ProjectRun) {
+	projectRunId, err := types.ProjectRunIdFromString(mux.Vars(request)["id"])
+	if err != nil || projectRunId <= 0 {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
-	jobRun, err = server.JobRunById(jobRunId)
-	if jobRun == nil || err != nil {
+	projectRun, err = server.ProjectRunById(projectRunId)
+	if projectRun == nil || err != nil {
 		w.WriteHeader(http.StatusNotFound)
 	}
 
 	return
 }
 
-func getJobWithRuns(job *types.Job, server types.Server) (out jobWithRuns, err error) {
-	jobRuns, err := server.RunsForJob(*job)
+func getProjectWithRuns(project *types.Project, server types.Server) (out projectWithRuns, err error) {
+	projectRuns, err := server.RunsForProject(*project)
 	if err != nil {
 		return
 	}
-	jobRunsWithJobId := make([]jobRunWithJobId, len(jobRuns))
+	projectRunsWithProjectId := make([]projectRunWithProjectId, len(projectRuns))
 
-	for i, jobRun := range jobRuns {
-		jobRunsWithJobId[i] = jobRunWithJobId{JobRun: jobRun,
-			Job: jobRun.Job.Id}
+	for i, projectRun := range projectRuns {
+		projectRunsWithProjectId[i] = projectRunWithProjectId{ProjectRun: projectRun,
+			Project: projectRun.Project.Id}
 	}
 
-	return jobWithRuns{Job: *job, JobRuns: jobRunsWithJobId}, nil
+	return projectWithRuns{Project: *project, ProjectRuns: projectRunsWithProjectId}, nil
 }

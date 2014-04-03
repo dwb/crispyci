@@ -45,7 +45,7 @@
           <div class="navbar-collapse collapse">
             <ul class="nav navbar-nav">
               <li>
-                {{#link-to 'jobs.new'}}New Job{{/link-to}}
+                {{#link-to 'projects.new'}}New Project{{/link-to}}
               </li>
             </ul>
           </div><!--/.nav-collapse -->
@@ -53,8 +53,8 @@
       </div>
     </script>
 
-    <script type="text/x-handlebars" data-template-name="jobs">
-      <h1>All Jobs</h1>
+    <script type="text/x-handlebars" data-template-name="projects">
+      <h1>All Projects</h1>
 
       <table class="table">
         <thead>
@@ -68,23 +68,23 @@
         </thead>
         <tbody>
           {{#each}}
-          <tr {{bind-attr class="lastJobRun.statusBootstrapType"}}>
-            <td>{{#link-to 'job' this}}{{name}}{{/link-to}}</td>
-            <td>{{lastJobRun.statusName}}</td>
-            <td>{{lastJobRun.startedAt}}</td>
-            <td>{{lastJobRun.finishedAt}}</td>
-            <td>{{lastJobRun.duration}}</td>
+          <tr {{bind-attr class="lastProjectRun.statusBootstrapType"}}>
+            <td>{{#link-to 'project' this}}{{name}}{{/link-to}}</td>
+            <td>{{lastProjectRun.statusName}}</td>
+            <td>{{lastProjectRun.startedAt}}</td>
+            <td>{{lastProjectRun.finishedAt}}</td>
+            <td>{{lastProjectRun.duration}}</td>
           </tr>
           {{/each}}
         </tbody>
       </table>
     </script>
 
-    <script type="text/x-handlebars" data-template-name="job">
+    <script type="text/x-handlebars" data-template-name="project">
       <h1>{{name}}</h1>
 
       <p>
-        {{#link-to 'jobs'}}Back to all jobs{{/link-to}}
+        {{#link-to 'projects'}}Back to all projects{{/link-to}}
       </p>
 
       <table class="table">
@@ -97,9 +97,9 @@
           </tr>
         </thead>
         <tbody>
-          {{#each controllers.jobRuns}}
+          {{#each controllers.projectRuns}}
           <tr {{bind-attr class="statusBootstrapType"}}>
-            <td>{{#link-to 'jobRun' this}}{{statusName}}{{/link-to}}</td>
+            <td>{{#link-to 'projectRun' this}}{{statusName}}{{/link-to}}</td>
             <td>{{startedAt}}</td>
             <td>{{finishedAt}}</td>
             <td>{{duration}}</td>
@@ -109,23 +109,23 @@
       </table>
     </script>
 
-    <script type="text/x-handlebars" data-template-name="abort-job-run">
+    <script type="text/x-handlebars" data-template-name="abort-project-run">
       <a href="#">Abort</a>
     </script>
 
-    <script type="text/x-handlebars" data-template-name="jobRun">
-      <h1>Job Run {{id}} for {{job.name}}</h1>
+    <script type="text/x-handlebars" data-template-name="projectRun">
+      <h1>Project Run {{id}} for {{project.name}}</h1>
 
       <div class="row top-actions">
         <div class="col-md-6">
-          {{#link-to 'job' job}}Back to {{job.name}}{{/link-to}}
+          {{#link-to 'project' project}}Back to {{project.name}}{{/link-to}}
         </div>
         <div {{bind-attr class=":col-md-6 :col-right isRunning::invisible"}}>
           <button class="btn btn-danger" {{bind-attr disabled="aborting:disabled"}} {{action abort}}>{{abortButtonText}}</button>
         </div>
       </div>
 
-      <pre id="jobRunProgress"></pre>
+      <pre id="projectRunProgress"></pre>
     </script>
 
   </head>

@@ -7,7 +7,7 @@ var defaultDateFormat = function (dt) {
   return m.format('llll') + ' (' + m.fromNow() + ')';
 };
 
-var jobStatuses = {
+var projectRunStatuses = {
   0: "Unknown",
   1: "Started",
   2: "Success",
@@ -15,7 +15,7 @@ var jobStatuses = {
   4: "Aborted",
 }
 
-var jobStatusBootstrapTypes = {
+var projectRunStatusBootstrapTypes = {
   Started: "started",
   Success: "success",
   Failure: "danger",
@@ -45,30 +45,30 @@ window.CrispyCI = Ember.Application.create({
 
 // --- Models ---
 
-CrispyCI.JobRun = DS.Model.extend({
+CrispyCI.ProjectRun = DS.Model.extend({
   status: DS.attr(),
   startedAt: DS.attr('date'),
   finishedAt: DS.attr('date'),
-  job: DS.belongsTo('job', {async: true}),
+  project: DS.belongsTo('project', {async: true}),
   isRunning: function () {
     return this.get('status') == 1;
   }.property('status'),
 });
 
-CrispyCI.Job = DS.Model.extend({
+CrispyCI.Project = DS.Model.extend({
   name: DS.attr(),
   scriptSet: DS.attr(),
-  jobRuns: DS.hasMany('jobRun'),
+  projectRuns: DS.hasMany('projectRun'),
 });
 
 // --- Routes ----
 
 CrispyCI.Router.map(function () {
-  this.resource('jobs', function () {
+  this.resource('projects', function () {
     this.route('new');
   });
-  this.resource('job', {path: "/jobs/:job_id"});
-  this.resource('jobRun', {path: "/jobRuns/:job_run_id"});
+  this.resource('project', {path: "/projects/:project_id"});
+  this.resource('projectRun', {path: "/projectRuns/:project_run_id"});
 });
 
 if (Modernizr.history) {
@@ -79,13 +79,13 @@ if (Modernizr.history) {
 
 CrispyCI.IndexRoute = Ember.Route.extend({
   beforeModel: function () {
-    this.transitionTo('jobs');
+    this.transitionTo('projects');
   }
 });
 
-CrispyCI.JobsRoute = Ember.Route.extend({
+CrispyCI.ProjectsRoute = Ember.Route.extend({
   model: function (params) {
-    return this.store.find('job');
+    return this.store.find('project');
   },
   setupController: function(controller, model) {
     controller.set('model', model);
@@ -94,19 +94,19 @@ CrispyCI.JobsRoute = Ember.Route.extend({
   sortProperties: ['name']
 });
 
-CrispyCI.JobRoute = Ember.Route.extend({
+CrispyCI.ProjectRoute = Ember.Route.extend({
   model: function (params) {
-    return this.store.find('job', params.job_id)
+    return this.store.find('project', params.project_id)
   },
   setupController: function(controller, model) {
     controller.set('model', model);
-    controller.set('controllers.jobRuns.content', model.get('jobRuns'));
+    controller.set('controllers.projectRuns.content', model.get('projectRuns'));
   }
 });
 
-CrispyCI.JobRunRoute = Ember.Route.extend({
+CrispyCI.ProjectRunRoute = Ember.Route.extend({
   model: function (params) {
-    return this.store.find('jobRun', params.job_run_id)
+    return this.store.find('projectRun', params.project_run_id)
   },
 
   setupController: function(controller, model) {
@@ -123,47 +123,47 @@ CrispyCI.JobRunRoute = Ember.Route.extend({
 
 CrispyCI.ApplicationController = Ember.Controller.extend({
   init: function () {
-    this.listenForJobRunUpdates();
+    this.listenForProjectRunUpdates();
     return this._super()
   },
 
-  listenForJobRunUpdates: function () {
+  listenForProjectRunUpdates: function () {
     var store = this.get('store');
-    var ws = newWebSocket(apiPathPrefix + "/jobRuns/updates");
+    var ws = newWebSocket(apiPathPrefix + "/projectRuns/updates");
 
-    console.log("Connecting for job run updates...");
+    console.log("Connecting for project run updates...");
     var self = this;
-    var retry = function () { self.listenForJobRunUpdates() };
+    var retry = function () { self.listenForProjectRunUpdates() };
 
     ws.onopen = function () {
-      console.log("Listening for job run updates...");
+      console.log("Listening for project run updates...");
     };
 
     ws.onclose = function () {
-      console.log("Server closed job run update connection. Retrying in 2s...");
+      console.log("Server closed project run update connection. Retrying in 2s...");
       setTimeout(retry, 2000);
     };
 
     ws.onmessage = function (e) {
       var payload = JSON.parse(e.data);
-      var id = payload.jobRun.id;
-      var jobRun = store.recordForId('jobRun', id);
+      var id = payload.projectRun.id;
+      var projectRun = store.recordForId('projectRun', id);
 
       if (payload.deleted) {
-        jobRun.unloadRecord();
+        projectRun.unloadRecord();
       } else {
-        var jobId = payload.jobRun.job;
-        payload.jobRuns = [payload.jobRun];
-        delete payload.jobRun;
+        var projectId = payload.projectRun.project;
+        payload.projectRuns = [payload.projectRun];
+        delete payload.projectRun;
         delete payload.deleted;
 
-        store.pushPayload('jobRun', payload);
+        store.pushPayload('projectRun', payload);
 
-        var job = store.getById('job', jobId);
-        if (job) {
-          var jobRuns = job.get('jobRuns');
-          if (!jobRuns.contains(jobRun)) {
-            jobRuns.pushObject(jobRun);
+        var project = store.getById('project', projectId);
+        if (project) {
+          var projectRuns = project.get('projectRuns');
+          if (!projectRuns.contains(projectRun)) {
+            projectRuns.pushObject(projectRun);
           }
         }
       }
@@ -171,32 +171,32 @@ CrispyCI.ApplicationController = Ember.Controller.extend({
   }
 });
 
-CrispyCI.JobsController = Ember.ArrayController.extend({
-  itemController: 'job'
+CrispyCI.ProjectsController = Ember.ArrayController.extend({
+  itemController: 'project'
 });
 
-CrispyCI.JobController = Ember.ObjectController.extend({
-  needs: ['jobRuns'],
+CrispyCI.ProjectController = Ember.ObjectController.extend({
+  needs: ['projectRuns'],
 
-  lastJobRun: function () {
-    return CrispyCI.JobRunController.create({
-      content: this.get('jobRuns.lastObject')
+  lastProjectRun: function () {
+    return CrispyCI.ProjectRunController.create({
+      content: this.get('projectRuns.lastObject')
     });
-  }.property('jobRuns.lastObject')
+  }.property('projectRuns.lastObject')
 });
 
 
-CrispyCI.JobRunsController = Ember.ArrayController.extend({
-  itemController: 'jobRun',
+CrispyCI.ProjectRunsController = Ember.ArrayController.extend({
+  itemController: 'projectRun',
   sortProperties: ['startedAt'],
   sortAscending: false
 });
 
-CrispyCI.JobRunController = Ember.ObjectController.extend({
+CrispyCI.ProjectRunController = Ember.ObjectController.extend({
   actions: {
     abort: function () {
-      console.log("Abort job run " + this.get('model.id'));
-      Ember.$.post(apiPathPrefix + "/jobRuns/" + this.get('model.id') + "/abort");
+      console.log("Abort project run " + this.get('model.id'));
+      Ember.$.post(apiPathPrefix + "/projectRuns/" + this.get('model.id') + "/abort");
       this.set('aborting', true);
 
       return false;
@@ -231,32 +231,32 @@ CrispyCI.JobRunController = Ember.ObjectController.extend({
   }.property('model.startedAt', 'model.finishedAt'),
 
   statusName: function () {
-    return jobStatuses[this.get('status')];
+    return projectRunStatuses[this.get('status')];
   }.property('status'),
 
   statusBootstrapType: function () {
-    return jobStatusBootstrapTypes[this.get('statusName')];
+    return projectRunStatusBootstrapTypes[this.get('statusName')];
   }.property('statusName'),
 
   connectProgress: function () {
-    var jobRun = this.get('model');
-    var jobRunId = jobRun.get('id');
-    var ws = newWebSocket(apiPathPrefix + "/jobRuns/" + jobRunId + "/progress");
+    var projectRun = this.get('model');
+    var projectRunId = projectRun.get('id');
+    var ws = newWebSocket(apiPathPrefix + "/projectRuns/" + projectRunId + "/progress");
     this.progressWs = ws
 
-    console.log("Connecting for job run " + jobRunId + " progress...");
+    console.log("Connecting for project run " + projectRunId + " progress...");
 
     ws.onopen = function () {
-      console.log("Connected for job run " + jobRunId + " progress");
+      console.log("Connected for project run " + projectRunId + " progress");
     };
 
     ws.onclose = function () {
-      console.log("Server closed job run " + jobRunId + " progress connection.");
+      console.log("Server closed project run " + projectRunId + " progress connection.");
     };
 
     ws.onmessage = function (e) {
-      Ember.$('#jobRunProgress').append(e.data);
-      if (jobRun.get('isRunning')) {
+      Ember.$('#projectRunProgress').append(e.data);
+      if (projectRun.get('isRunning')) {
         var body = Ember.$('body');
         body.scrollTop(body.height());
       }
@@ -265,9 +265,9 @@ CrispyCI.JobRunController = Ember.ObjectController.extend({
 
   disconnectProgress: function() {
     if (typeof this.progressWs !== "undefined") {
-      var jobRun = this.get('model');
-      var jobRunId = jobRun.get('id');
-      console.log("Closing job run " + jobRunId + " progress connection.")
+      var projectRun = this.get('model');
+      var projectRunId = projectRun.get('id');
+      console.log("Closing project run " + projectRunId + " progress connection.")
       this.progressWs.close();
       this.progressWs = undefined;
     }
@@ -284,21 +284,21 @@ CrispyCI.ApplicationAdapter = DS.RESTAdapter.extend({
   namespace: apiPathPrefix.replace(/^\//, ''),
 });
 
-CrispyCI.JobSerializer = DS.RESTSerializer.extend({
+CrispyCI.ProjectSerializer = DS.RESTSerializer.extend({
   extractSingle: function(store, type, payload, id, requestType) {
-    payload.jobRuns = payload.job.jobRuns;
-    payload.job.jobRuns = payload.jobRuns.mapProperty('id');
+    payload.projectRuns = payload.project.projectRuns;
+    payload.project.projectRuns = payload.projectRuns.mapProperty('id');
     return this._super.apply(this, arguments);
   },
 
   extractArray: function(store, type, payload, id, requestType) {
-    jobRuns = [];
-    payload.jobs.forEach(function (job) {
-      jobRuns = jobRuns.concat(job.jobRuns);
-      job.jobRuns = job.jobRuns.mapProperty('id');
+    projectRuns = [];
+    payload.projects.forEach(function (project) {
+      projectRuns = projectRuns.concat(project.projectRuns);
+      project.projectRuns = project.projectRuns.mapProperty('id');
     });
 
-    payload.jobRuns = jobRuns;
+    payload.projectRuns = projectRuns;
     return this._super.apply(this, arguments);
   }
 });

@@ -10,9 +10,9 @@ import (
 	"time"
 )
 
-func (self *JobRun) Run(notifyProgress chan JobProgress) (err error) {
+func (self *ProjectRun) Run(notifyProgress chan ProjectProgress) (err error) {
 	cmd := new(exec.Cmd)
-	cmd.Path = path.Join(self.ScriptDir, "run-"+self.Job.ScriptSet)
+	cmd.Path = path.Join(self.ScriptDir, "run-"+self.Project.ScriptSet)
 
 	if cmd.Path[0] != '/' {
 		// Make absolute path before continuing, as setting Dir will break
@@ -24,7 +24,7 @@ func (self *JobRun) Run(notifyProgress chan JobProgress) (err error) {
 		cmd.Path = path.Join(pwd, cmd.Path)
 	}
 
-	cmd.Dir = path.Join(self.WorkingDir, "jobs", self.Job.Name)
+	cmd.Dir = path.Join(self.WorkingDir, "projects", self.Project.Name)
 	setupCmd(cmd)
 
 	if _, err = os.Stat(cmd.Dir); os.IsNotExist(err) {
@@ -48,7 +48,7 @@ func (self *JobRun) Run(notifyProgress chan JobProgress) (err error) {
 	if err != nil {
 		return
 	}
-	self.setStatus(JobStarted)
+	self.setStatus(ProjectStarted)
 
 	go func() {
 		stdout := lineChanFromReader(stdoutPipe)
@@ -56,7 +56,7 @@ func (self *JobRun) Run(notifyProgress chan JobProgress) (err error) {
 
 		processLine := func(line string, ch chan string) {
 			if line != "" {
-				notifyProgress <- JobProgress{JobRun: *self, Time: time.Now(), Line: line}
+				notifyProgress <- ProjectProgress{ProjectRun: *self, Time: time.Now(), Line: line}
 			}
 		}
 
@@ -92,7 +92,7 @@ func (self *JobRun) Run(notifyProgress chan JobProgress) (err error) {
 		}
 
 		self.interruptChan = nil
-		notifyProgress <- JobProgress{JobRun: *self, Time: time.Now(),
+		notifyProgress <- ProjectProgress{ProjectRun: *self, Time: time.Now(),
 			IsFinal: true}
 
 		err = cmd.Wait()
@@ -100,18 +100,18 @@ func (self *JobRun) Run(notifyProgress chan JobProgress) (err error) {
 		self.FinishedAt = time.Now()
 
 		if aborted {
-			self.setStatus(JobAborted)
+			self.setStatus(ProjectAborted)
 		} else if err == nil {
-			self.setStatus(JobSucceeded)
+			self.setStatus(ProjectSucceeded)
 		} else {
-			self.setStatus(JobFailed)
+			self.setStatus(ProjectFailed)
 		}
 	}()
 
 	return nil
 }
 
-func (self *JobRun) Abort() {
+func (self *ProjectRun) Abort() {
 	select {
 	case self.interruptChan <- true:
 	default:
@@ -120,8 +120,8 @@ func (self *JobRun) Abort() {
 
 // --- Private ---
 
-func (self *JobRun) setStatus(newStatus JobStatus) {
-	if newStatus == JobStarted {
+func (self *ProjectRun) setStatus(newStatus ProjectRunStatus) {
+	if newStatus == ProjectStarted {
 		self.StartedAt = time.Now()
 	} else {
 		self.FinishedAt = time.Now()

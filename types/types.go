@@ -11,23 +11,23 @@ var (
 	rng = rand.New(rand.NewSource(time.Now().UnixNano()))
 )
 
-type JobId uint64
+type ProjectId uint64
 
-func JobIdFromString(in string) (out JobId, err error) {
+func ProjectIdFromString(in string) (out ProjectId, err error) {
 	i, err := stringToUint64(in)
 	if err != nil {
 		return
 	}
-	out = JobId(i)
+	out = ProjectId(i)
 	return
 }
 
-func (self JobId) String() string {
+func (self ProjectId) String() string {
 	return fmt.Sprintf("%d", self)
 }
 
-type Job struct {
-	Id        JobId  `json:"id"`
+type Project struct {
+	Id        ProjectId  `json:"id"`
 	Name      string `json:"name"`
 	ScriptSet string `json:"scriptSet"`
 }
@@ -38,144 +38,144 @@ func randUint64() (out uint64) {
 	return
 }
 
-func NewJob() (newJob Job) {
-	return Job{Id: JobId(randUint64())}
+func NewProject() (newProject Project) {
+	return Project{Id: ProjectId(randUint64())}
 }
 
-type JobWithRunning struct {
-	Job
+type ProjectWithRunning struct {
+	Project
 	Running bool
 }
 
-type JobRunRequest struct {
-	JobName    string
+type ProjectRunRequest struct {
+	ProjectName    string
 	Source     string
 	ReceivedAt time.Time
-	Job        Job
+	Project        Project
 	AllowStart chan bool
 }
 
-func NewJobRunRequest() (req JobRunRequest) {
-	return JobRunRequest{ReceivedAt: time.Now(), AllowStart: make(chan bool)}
+func NewProjectRunRequest() (req ProjectRunRequest) {
+	return ProjectRunRequest{ReceivedAt: time.Now(), AllowStart: make(chan bool)}
 }
 
-func (self *JobRunRequest) FindJob(store Store) (job *Job, err error) {
-	job, err = store.JobByName(self.JobName)
+func (self *ProjectRunRequest) FindProject(store Store) (project *Project, err error) {
+	project, err = store.ProjectByName(self.ProjectName)
 	return
 }
 
-type JobRunId uint64
+type ProjectRunId uint64
 
-func (self JobRunId) String() string {
+func (self ProjectRunId) String() string {
 	return fmt.Sprintf("%d", self)
 }
 
-func JobRunIdFromString(in string) (out JobRunId, err error) {
+func ProjectRunIdFromString(in string) (out ProjectRunId, err error) {
 	i, err := stringToUint64(in)
 	if err != nil {
 		return
 	}
-	out = JobRunId(i)
+	out = ProjectRunId(i)
 	return
 }
 
-type JobRun struct {
-	Id            JobRunId  `json:"id"`
-	Job           Job       `json:"-"`
+type ProjectRun struct {
+	Id            ProjectRunId  `json:"id"`
+	Project           Project       `json:"-"`
 	ScriptDir     string    `json:"-"`
 	WorkingDir    string    `json:"-"`
-	Status        JobStatus `json:"status"`
+	Status        ProjectRunStatus `json:"status"`
 	StartedAt     time.Time `json:"startedAt"`
 	FinishedAt    time.Time `json:"finishedAt"`
-	statusChanges chan JobRun
+	statusChanges chan ProjectRun
 	interruptChan chan bool
 }
 
-type JobRunUpdate struct {
-	JobRun
+type ProjectRunUpdate struct {
+	ProjectRun
 	Deleted bool
 }
 
-func NewJobRun(job Job, scriptDir string, workingDir string, statusChanges chan JobRun) (out JobRun) {
-	return JobRun{Id: JobRunId(randUint64()), Job: job, ScriptDir: scriptDir,
+func NewProjectRun(project Project, scriptDir string, workingDir string, statusChanges chan ProjectRun) (out ProjectRun) {
+	return ProjectRun{Id: ProjectRunId(randUint64()), Project: project, ScriptDir: scriptDir,
 		WorkingDir: workingDir, statusChanges: statusChanges,
 		interruptChan: make(chan bool, 1)}
 }
 
-type JobProgress struct {
-	JobRun  JobRun
+type ProjectProgress struct {
+	ProjectRun  ProjectRun
 	Time    time.Time
 	Line    string
 	IsFinal bool
 }
 
-type JobRunProgressRequest struct {
-	JobRunId     JobRunId
-	ProgressChan chan JobProgress
+type ProjectRunProgressRequest struct {
+	ProjectRunId     ProjectRunId
+	ProgressChan chan ProjectProgress
 	StopChan     chan bool
 }
 
-type JobStatus uint8
+type ProjectRunStatus uint8
 
 const (
-	JobUnknown JobStatus = iota
-	JobStarted
-	JobSucceeded
-	JobFailed
-	JobAborted
+	ProjectUnknown ProjectRunStatus = iota
+	ProjectStarted
+	ProjectSucceeded
+	ProjectFailed
+	ProjectAborted
 )
 
-var jobStatusNames = map[JobStatus]string{
-	JobUnknown:   "Unknown",
-	JobStarted:   "Started",
-	JobSucceeded: "Succeeded",
-	JobFailed:    "Failed",
-	JobAborted:   "Aborted",
+var projectRunStatusNames = map[ProjectRunStatus]string{
+	ProjectUnknown:   "Unknown",
+	ProjectStarted:   "Started",
+	ProjectSucceeded: "Succeeded",
+	ProjectFailed:    "Failed",
+	ProjectAborted:   "Aborted",
 }
 
-func (self JobStatus) String() string {
-	return jobStatusNames[self]
+func (self ProjectRunStatus) String() string {
+	return projectRunStatusNames[self]
 }
 
 type Server interface {
 	ScriptDir() string
 
-	SubmitJobRunRequest(JobRunRequest)
-	RunningJobRunForJob(Job) *JobRun
-	ProgressChanForJobRun(JobRun) (progress <-chan JobProgress, stop chan<- bool)
+	SubmitProjectRunRequest(ProjectRunRequest)
+	RunningProjectRunForProject(Project) *ProjectRun
+	ProgressChanForProjectRun(ProjectRun) (progress <-chan ProjectProgress, stop chan<- bool)
 
-	SubJobUpdates() chan interface{}
-	SubJobRunUpdates() chan interface{}
+	SubProjectUpdates() chan interface{}
+	SubProjectRunUpdates() chan interface{}
 	Unsub(chan interface{})
 	WaitGroupAdd(n int)
 	WaitGroupDone()
 
 	// Store proxies
-	AllJobs() ([]Job, error)
-	JobById(id JobId) (*Job, error)
-	JobByName(name string) (*Job, error)
-	WriteJob(Job) error
-	JobRunById(JobRunId) (*JobRun, error)
-	RunsForJob(Job) ([]JobRun, error)
-	LastRunForJob(Job) (*JobRun, error)
-	ProgressForJobRun(JobRun) (*[]JobProgress, error)
-	DeleteJobRun(JobRun) error
+	AllProjects() ([]Project, error)
+	ProjectById(id ProjectId) (*Project, error)
+	ProjectByName(name string) (*Project, error)
+	WriteProject(Project) error
+	ProjectRunById(ProjectRunId) (*ProjectRun, error)
+	RunsForProject(Project) ([]ProjectRun, error)
+	LastRunForProject(Project) (*ProjectRun, error)
+	ProgressForProjectRun(ProjectRun) (*[]ProjectProgress, error)
+	DeleteProjectRun(ProjectRun) error
 }
 
 type Store interface {
 	Init(connectionString string) error
 	Close()
-	AllJobs() ([]Job, error)
-	JobById(id JobId) (*Job, error)
-	JobByName(name string) (*Job, error)
-	WriteJob(Job) error
-	JobRunById(JobRunId) (*JobRun, error)
-	RunsForJob(Job) ([]JobRun, error)
-	LastRunForJob(Job) (*JobRun, error)
-	WriteJobRun(JobRun) error
-	ProgressForJobRun(JobRun) (*[]JobProgress, error)
-	WriteJobProgress(JobProgress) error
-	DeleteJobRun(JobRun) error
+	AllProjects() ([]Project, error)
+	ProjectById(id ProjectId) (*Project, error)
+	ProjectByName(name string) (*Project, error)
+	WriteProject(Project) error
+	ProjectRunById(ProjectRunId) (*ProjectRun, error)
+	RunsForProject(Project) ([]ProjectRun, error)
+	LastRunForProject(Project) (*ProjectRun, error)
+	WriteProjectRun(ProjectRun) error
+	ProgressForProjectRun(ProjectRun) (*[]ProjectProgress, error)
+	WriteProjectProgress(ProjectProgress) error
+	DeleteProjectRun(ProjectRun) error
 }
 
 // ---

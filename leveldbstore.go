@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/syndtr/goleveldb/leveldb"
 	leveldbopt "github.com/syndtr/goleveldb/leveldb/opt"
+	leveldbutil "github.com/syndtr/goleveldb/leveldb/util"
 	"log"
 	"strconv"
 	"strings"
@@ -17,8 +18,8 @@ type LevelDbStore struct {
 	db *leveldb.DB
 }
 
-const jobsKey = "Job:"
-const jobRunsKey = "JobRun:"
+const projectsKey = "Project:"
+const projectRunsKey = "ProjectRun:"
 
 var (
 	levelDbWriteOptions = leveldbopt.WriteOptions{Sync: true}
@@ -39,96 +40,97 @@ func (self *LevelDbStore) Close() {
 	}
 }
 
-func (self *LevelDbStore) AllJobs() (jobs []types.Job, err error) {
-	jobs = make([]types.Job, 0)
+func (self *LevelDbStore) AllProjects() (projects []types.Project, err error) {
+	projects = make([]types.Project, 0)
 
-	iter := self.db.NewIterator(nil)
+	iter := self.db.NewIterator(&leveldbutil.Range{Start: []byte(projectsKey)},
+								nil)
 	defer iter.Release()
 
-	for iter.Seek([]byte(jobsKey)); strings.HasPrefix(string(iter.Key()), jobsKey); iter.Next() {
-		var job types.Job
+	for ; strings.HasPrefix(string(iter.Key()), projectsKey); iter.Next() {
+		var project types.Project
 		dec := gob.NewDecoder(bytes.NewBuffer(iter.Value()))
-		err := dec.Decode(&job)
+		err := dec.Decode(&project)
 		if err == nil {
-			jobs = append(jobs, job)
+			projects = append(projects, project)
 		}
 	}
 	return
 }
 
-func (self *LevelDbStore) JobById(id types.JobId) (job *types.Job, err error) {
-	buf, err := self.db.Get([]byte(jobKeyById(id)), nil)
+func (self *LevelDbStore) ProjectById(id types.ProjectId) (project *types.Project, err error) {
+	buf, err := self.db.Get([]byte(projectKeyById(id)), nil)
 	if err != nil {
 		return
 	}
 
 	dec := gob.NewDecoder(bytes.NewBuffer(buf))
-	err = dec.Decode(&job)
+	err = dec.Decode(&project)
 	if err != nil {
 		return nil, err
 	}
 	return
 }
 
-func (self *LevelDbStore) JobByName(name string) (job *types.Job, err error) {
+func (self *LevelDbStore) ProjectByName(name string) (project *types.Project, err error) {
 	ss, err := self.db.GetSnapshot()
 	if err != nil {
 		return
 	}
 	defer ss.Release()
 
-	jobIdBytes, err := ss.Get([]byte(jobNameIndexKey(name)), nil)
+	projectIdBytes, err := ss.Get([]byte(projectNameIndexKey(name)), nil)
 	if err != nil {
 		return
 	}
-	jobId, err := strconv.ParseUint(string(jobIdBytes), 10, 64)
-	if err != nil || jobId <= 0 {
+	projectId, err := strconv.ParseUint(string(projectIdBytes), 10, 64)
+	if err != nil || projectId <= 0 {
 		return
 	}
 
-	buf, err := ss.Get([]byte(jobKeyById(types.JobId(jobId))), nil)
+	buf, err := ss.Get([]byte(projectKeyById(types.ProjectId(projectId))), nil)
 	if err != nil {
 		return
 	}
 
 	dec := gob.NewDecoder(bytes.NewBuffer(buf))
-	err = dec.Decode(&job)
+	err = dec.Decode(&project)
 	if err != nil {
 		return nil, err
 	}
 	return
 }
 
-func (self *LevelDbStore) WriteJob(job types.Job) (err error) {
+func (self *LevelDbStore) WriteProject(project types.Project) (err error) {
 	var buf bytes.Buffer
 	enc := gob.NewEncoder(&buf)
-	enc.Encode(&job)
+	enc.Encode(&project)
 
 	batch := new(leveldb.Batch)
-	batch.Put([]byte(jobKey(job)), buf.Bytes())
-	batch.Put([]byte(jobNameIndexKey(job.Name)),
-		[]byte(fmt.Sprintf("%d", job.Id)))
+	batch.Put([]byte(projectKey(project)), buf.Bytes())
+	batch.Put([]byte(projectNameIndexKey(project.Name)),
+		[]byte(fmt.Sprintf("%d", project.Id)))
 
 	err = self.db.Write(batch, &levelDbWriteOptions)
 	return
 }
 
-func (self *LevelDbStore) JobRunById(id types.JobRunId) (jobRun *types.JobRun, err error) {
-	buf, err := self.db.Get([]byte(jobRunKeyById(id)), nil)
+func (self *LevelDbStore) ProjectRunById(id types.ProjectRunId) (projectRun *types.ProjectRun, err error) {
+	buf, err := self.db.Get([]byte(projectRunKeyById(id)), nil)
 	if err != nil {
 		return
 	}
 
 	dec := gob.NewDecoder(bytes.NewBuffer(buf))
-	err = dec.Decode(&jobRun)
+	err = dec.Decode(&projectRun)
 	if err != nil {
 		return nil, err
 	}
 	return
 }
 
-func (self *LevelDbStore) RunsForJob(job types.Job) (results []types.JobRun, err error) {
-	results = make([]types.JobRun, 0)
+func (self *LevelDbStore) RunsForProject(project types.Project) (results []types.ProjectRun, err error) {
+	results = make([]types.ProjectRun, 0)
 
 	ss, err := self.db.GetSnapshot()
 	if err != nil {
@@ -136,26 +138,26 @@ func (self *LevelDbStore) RunsForJob(job types.Job) (results []types.JobRun, err
 	}
 	defer ss.Release()
 
-	iter := ss.NewIterator(nil)
-	prefix := jobRunsKeyForJob(job)
+	prefix := projectRunsKeyForProject(project)
+	iter := ss.NewIterator(&leveldbutil.Range{Start: []byte(prefix)}, nil)
 	defer iter.Release()
 
-	for iter.Seek([]byte(prefix)); strings.HasPrefix(string(iter.Key()), prefix); iter.Next() {
-		var jobRun types.JobRun
+	for ; strings.HasPrefix(string(iter.Key()), prefix); iter.Next() {
+		var projectRun types.ProjectRun
 		dec := gob.NewDecoder(bytes.NewBuffer(iter.Value()))
-		err := dec.Decode(&jobRun)
+		err := dec.Decode(&projectRun)
 		if err == nil {
-			results = append(results, jobRun)
+			results = append(results, projectRun)
 		}
 	}
 	return
 }
 
-func (self *LevelDbStore) LastRunForJob(job types.Job) (result *types.JobRun, err error) {
+func (self *LevelDbStore) LastRunForProject(project types.Project) (result *types.ProjectRun, err error) {
 	// TODO: we can doubtless do this more efficiently if we don't decode
 	// all previous results, but hey it'll be pretty quick as it is.
 
-	results, err := self.RunsForJob(job)
+	results, err := self.RunsForProject(project)
 	if err != nil {
 		return
 	}
@@ -167,48 +169,48 @@ func (self *LevelDbStore) LastRunForJob(job types.Job) (result *types.JobRun, er
 	return nil, nil
 }
 
-func (self *LevelDbStore) WriteJobRun(jobRun types.JobRun) (err error) {
+func (self *LevelDbStore) WriteProjectRun(projectRun types.ProjectRun) (err error) {
 	batch := new(leveldb.Batch)
 
 	var buf bytes.Buffer
 	enc := gob.NewEncoder(&buf)
-	enc.Encode(&jobRun)
+	enc.Encode(&projectRun)
 	toWrite := buf.Bytes()
 
-	batch.Put([]byte(jobRunKey(jobRun)), toWrite)
-	batch.Put([]byte(jobRunForJobKey(jobRun)), toWrite)
+	batch.Put([]byte(projectRunKey(projectRun)), toWrite)
+	batch.Put([]byte(projectRunForProjectKey(projectRun)), toWrite)
 
 	err = self.db.Write(batch, &levelDbWriteOptions)
 	return
 }
 
-func (self *LevelDbStore) DeleteJobRun(jobRun types.JobRun) (err error) {
+func (self *LevelDbStore) DeleteProjectRun(projectRun types.ProjectRun) (err error) {
 	batch := new(leveldb.Batch)
 
-	iter := self.db.NewIterator(nil)
+	prefix := projectProgressPrefix(projectRun)
+	iter := self.db.NewIterator(&leveldbutil.Range{Start: []byte(prefix)}, nil)
 	defer iter.Release()
-	prefix := jobProgressPrefix(jobRun)
 
-	for iter.Seek([]byte(prefix)); strings.HasPrefix(string(iter.Key()), prefix); iter.Next() {
+	for ; strings.HasPrefix(string(iter.Key()), prefix); iter.Next() {
 		batch.Delete(iter.Key())
 	}
 
-	batch.Delete([]byte(jobRunForJobKey(jobRun)))
-	batch.Delete([]byte(jobRunKey(jobRun)))
+	batch.Delete([]byte(projectRunForProjectKey(projectRun)))
+	batch.Delete([]byte(projectRunKey(projectRun)))
 
 	err = self.db.Write(batch, &levelDbWriteOptions)
 	return
 }
 
-func (self *LevelDbStore) ProgressForJobRun(jobRun types.JobRun) (progress *[]types.JobProgress, err error) {
-	ps := make([]types.JobProgress, 0)
+func (self *LevelDbStore) ProgressForProjectRun(projectRun types.ProjectRun) (progress *[]types.ProjectProgress, err error) {
+	ps := make([]types.ProjectProgress, 0)
 
-	iter := self.db.NewIterator(nil)
+	prefix := projectProgressPrefix(projectRun)
+	iter := self.db.NewIterator(&leveldbutil.Range{Start: []byte(prefix)}, nil)
 	defer iter.Release()
-	prefix := jobProgressPrefix(jobRun)
 
-	for iter.Seek([]byte(prefix)); strings.HasPrefix(string(iter.Key()), prefix); iter.Next() {
-		var p types.JobProgress
+	for ; strings.HasPrefix(string(iter.Key()), prefix); iter.Next() {
+		var p types.ProjectProgress
 		dec := gob.NewDecoder(bytes.NewBuffer(iter.Value()))
 		err := dec.Decode(&p)
 		if err == nil {
@@ -218,50 +220,50 @@ func (self *LevelDbStore) ProgressForJobRun(jobRun types.JobRun) (progress *[]ty
 	return &ps, nil
 }
 
-func (self *LevelDbStore) WriteJobProgress(jobProgress types.JobProgress) (err error) {
-	key := []byte(jobProgressPrefix(jobProgress.JobRun) + jobProgress.Time.UTC().String())
+func (self *LevelDbStore) WriteProjectProgress(projectProgress types.ProjectProgress) (err error) {
+	key := []byte(projectProgressPrefix(projectProgress.ProjectRun) + projectProgress.Time.UTC().String())
 
 	var buf bytes.Buffer
 	enc := gob.NewEncoder(&buf)
-	enc.Encode(&jobProgress)
+	enc.Encode(&projectProgress)
 	err = self.db.Put(key, buf.Bytes(), &levelDbWriteOptions)
 	return
 }
 
 // ---
 
-func jobKey(job types.Job) string {
-	return jobKeyById(job.Id)
+func projectKey(project types.Project) string {
+	return projectKeyById(project.Id)
 }
 
-func jobKeyById(id types.JobId) string {
-	return fmt.Sprintf("%s:%s", jobsKey, id)
+func projectKeyById(id types.ProjectId) string {
+	return fmt.Sprintf("%s:%s", projectsKey, id)
 }
 
-func jobNameIndexKey(name string) string {
-	return fmt.Sprintf("JobNameToId:%s")
+func projectNameIndexKey(name string) string {
+	return fmt.Sprintf("ProjectNameToId:%s")
 }
 
-func jobRunsKeyForJob(job types.Job) string {
-	return fmt.Sprintf("JobRunsForJobId:%s:", job.Id)
+func projectRunsKeyForProject(project types.Project) string {
+	return fmt.Sprintf("ProjectRunsForProjectId:%s:", project.Id)
 }
 
-func jobRunKey(jobRun types.JobRun) string {
-	return jobRunKeyById(jobRun.Id)
+func projectRunKey(projectRun types.ProjectRun) string {
+	return projectRunKeyById(projectRun.Id)
 }
 
-func jobRunKeyById(id types.JobRunId) string {
-	return fmt.Sprintf("%s:%s", jobRunsKey, id)
+func projectRunKeyById(id types.ProjectRunId) string {
+	return fmt.Sprintf("%s:%s", projectRunsKey, id)
 }
 
-func jobRunForJobKey(jobRun types.JobRun) string {
-	return jobRunsKeyForJob(jobRun.Job) + jobRun.StartedAt.UTC().String()
+func projectRunForProjectKey(projectRun types.ProjectRun) string {
+	return projectRunsKeyForProject(projectRun.Project) + projectRun.StartedAt.UTC().String()
 }
 
-func jobProgressPrefix(jobRun types.JobRun) string {
-	return jobProgressPrefixByJobRunId(jobRun.Id)
+func projectProgressPrefix(projectRun types.ProjectRun) string {
+	return projectProgressPrefixByProjectRunId(projectRun.Id)
 }
 
-func jobProgressPrefixByJobRunId(id types.JobRunId) string {
-	return fmt.Sprintf("JobProgressForJobRunId:%s:", id)
+func projectProgressPrefixByProjectRunId(id types.ProjectRunId) string {
+	return fmt.Sprintf("ProjectProgressForProjectRunId:%s:", id)
 }
