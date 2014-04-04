@@ -9,7 +9,6 @@ import (
 	leveldbutil "github.com/syndtr/goleveldb/leveldb/util"
 	"log"
 	"strconv"
-	"strings"
 
 	"github.com/dwb/crispyci/types"
 )
@@ -43,11 +42,10 @@ func (self *LevelDbStore) Close() {
 func (self *LevelDbStore) AllProjects() (projects []types.Project, err error) {
 	projects = make([]types.Project, 0)
 
-	iter := self.db.NewIterator(&leveldbutil.Range{Start: []byte(projectsKey)},
-		nil)
+	dbRange := rangeForKeyPrefix(projectsKey)
+	iter := self.db.NewIterator(&dbRange, nil)
 	defer iter.Release()
-
-	for ; strings.HasPrefix(string(iter.Key()), projectsKey); iter.Next() {
+	for iter.Next() {
 		var project types.Project
 		dec := gob.NewDecoder(bytes.NewBuffer(iter.Value()))
 		err := dec.Decode(&project)
@@ -109,7 +107,7 @@ func (self *LevelDbStore) WriteProject(project types.Project) (err error) {
 	batch := new(leveldb.Batch)
 	batch.Put([]byte(projectKey(project)), buf.Bytes())
 	batch.Put([]byte(projectNameIndexKey(project.Name)),
-		[]byte(fmt.Sprintf("%d", project.Id)))
+		[]byte(fmt.Sprintf("%s", project.Id)))
 
 	err = self.db.Write(batch, &levelDbWriteOptions)
 	return
@@ -138,11 +136,10 @@ func (self *LevelDbStore) BuildsForProject(project types.Project) (results []typ
 	}
 	defer ss.Release()
 
-	prefix := projectBuildsKeyForProject(project)
-	iter := ss.NewIterator(&leveldbutil.Range{Start: []byte(prefix)}, nil)
+	dbRange := rangeForKeyPrefix(projectBuildsKeyForProject(project))
+	iter := ss.NewIterator(&dbRange, nil)
 	defer iter.Release()
-
-	for ; strings.HasPrefix(string(iter.Key()), prefix); iter.Next() {
+	for iter.Next() {
 		var projectBuild types.ProjectBuild
 		dec := gob.NewDecoder(bytes.NewBuffer(iter.Value()))
 		err := dec.Decode(&projectBuild)
@@ -187,11 +184,10 @@ func (self *LevelDbStore) WriteProjectBuild(projectBuild types.ProjectBuild) (er
 func (self *LevelDbStore) DeleteProjectBuild(projectBuild types.ProjectBuild) (err error) {
 	batch := new(leveldb.Batch)
 
-	prefix := projectProgressPrefix(projectBuild)
-	iter := self.db.NewIterator(&leveldbutil.Range{Start: []byte(prefix)}, nil)
+	dbRange := rangeForKeyPrefix(projectProgressPrefix(projectBuild))
+	iter := self.db.NewIterator(&dbRange, nil)
 	defer iter.Release()
-
-	for ; strings.HasPrefix(string(iter.Key()), prefix); iter.Next() {
+	for iter.Next() {
 		batch.Delete(iter.Key())
 	}
 
@@ -205,11 +201,11 @@ func (self *LevelDbStore) DeleteProjectBuild(projectBuild types.ProjectBuild) (e
 func (self *LevelDbStore) ProgressForProjectBuild(projectBuild types.ProjectBuild) (progress *[]types.ProjectProgress, err error) {
 	ps := make([]types.ProjectProgress, 0)
 
-	prefix := projectProgressPrefix(projectBuild)
-	iter := self.db.NewIterator(&leveldbutil.Range{Start: []byte(prefix)}, nil)
+	dbRange := rangeForKeyPrefix(projectProgressPrefix(projectBuild))
+	iter := self.db.NewIterator(&dbRange, nil)
 	defer iter.Release()
 
-	for ; strings.HasPrefix(string(iter.Key()), prefix); iter.Next() {
+	for iter.Next() {
 		var p types.ProjectProgress
 		dec := gob.NewDecoder(bytes.NewBuffer(iter.Value()))
 		err := dec.Decode(&p)
@@ -232,16 +228,24 @@ func (self *LevelDbStore) WriteProjectProgress(projectProgress types.ProjectProg
 
 // ---
 
+func rangeForKeyPrefix(prefix string) leveldbutil.Range {
+	startKey := []byte(prefix)
+	endKey := make([]byte, len(startKey))
+	copy(endKey, startKey)
+	endKey[len(endKey)-1]++
+	return leveldbutil.Range{Start: startKey, Limit: endKey}
+}
+
 func projectKey(project types.Project) string {
 	return projectKeyById(project.Id)
 }
 
 func projectKeyById(id types.ProjectId) string {
-	return fmt.Sprintf("%s:%s", projectsKey, id)
+	return fmt.Sprintf("%s%s", projectsKey, id)
 }
 
 func projectNameIndexKey(name string) string {
-	return fmt.Sprintf("ProjectNameToId:%s")
+	return fmt.Sprintf("ProjectNameToId:%s", name)
 }
 
 func projectBuildsKeyForProject(project types.Project) string {
@@ -253,7 +257,7 @@ func projectBuildKey(projectBuild types.ProjectBuild) string {
 }
 
 func projectBuildKeyById(id types.ProjectBuildId) string {
-	return fmt.Sprintf("%s:%s", projectBuildsKey, id)
+	return fmt.Sprintf("%:%s", projectBuildsKey, id)
 }
 
 func projectBuildForProjectKey(projectBuild types.ProjectBuild) string {
