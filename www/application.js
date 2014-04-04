@@ -186,7 +186,7 @@ CrispyCI.ProjectController = Ember.ObjectController.extend({
 });
 
 
-CrispyCI.ProjectBuilds = Ember.ArrayController.extend({
+CrispyCI.ProjectBuildsController = Ember.ArrayController.extend({
   itemController: 'projectBuild',
   sortProperties: ['startedAt'],
   sortAscending: false
