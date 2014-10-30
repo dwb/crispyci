@@ -196,8 +196,10 @@ func (self *Server) ProgressChanForProjectBuild(projectBuild types.ProjectBuild)
 	return ch2way, stop2way
 }
 
-func (self *Server) pubProjectUpdate(project types.Project) {
-	self.projectEvents.Pub(project, projectsPubSubChannel)
+func (self *Server) pubProjectUpdate(project types.Project, deleted bool) {
+	self.projectEvents.Pub(
+		types.ProjectUpdate{Project: project, Deleted: deleted},
+		projectsPubSubChannel)
 }
 
 func (self *Server) SubProjectUpdates() (ch chan interface{}) {
@@ -240,14 +242,22 @@ func (self *Server) ProjectById(id types.ProjectId) (*types.Project, error) {
 	return self.store.ProjectById(id)
 }
 
-func (self *Server) ProjectByName(name string) (*types.Project, error) {
-	return self.store.ProjectByName(name)
+func (self *Server) ProjectByUrl(url string) (*types.Project, error) {
+	return self.store.ProjectByUrl(url)
 }
 
 func (self *Server) WriteProject(project types.Project) (err error) {
 	err = self.store.WriteProject(project)
 	if err == nil {
-		self.pubProjectUpdate(project)
+		self.pubProjectUpdate(project, false)
+	}
+	return
+}
+
+func (self *Server) DeleteProject(project types.Project) (err error) {
+	err = self.store.DeleteProject(project)
+	if err == nil {
+		self.pubProjectUpdate(project, true)
 	}
 	return
 }
@@ -311,19 +321,14 @@ func (self *Server) writeProjectProgress(p types.ProjectProgress) (err error) {
 
 func (self *Server) buildProjectFromRequest(req types.ProjectBuildRequest) {
 	go func() {
-		log.Printf("Received project build request for '%s'\n", req.ProjectName)
+		log.Printf("Received project build request for '%s'\n", req.Url)
 
-		project, err := req.FindProject(self.store)
-		if project == nil {
-			log.Printf("Couldn't find project '%s'\n", req.ProjectName)
-			return
-		}
+		err := req.FindProject(self.store)
 		if err != nil {
 			log.Printf("Error getting project: %s\n", err)
 			return
 		}
 
-		req.Project = *project
 		self.canStartProjectChan <- req
 		shouldStart := <-req.AllowStart
 		if !shouldStart {
@@ -331,8 +336,8 @@ func (self *Server) buildProjectFromRequest(req types.ProjectBuildRequest) {
 		}
 
 		<-self.concurrentProjectTokens
-		projectBuild := types.NewProjectBuild(*project, self.scriptDir, self.workingDir,
-			self.projectBuildStatusChan)
+		projectBuild := types.NewProjectBuild(req.Project, self.scriptDir,
+			self.workingDir, self.projectBuildStatusChan)
 		err = projectBuild.Build(self.projectProgressChan)
 		if err != nil {
 			log.Println(err)

@@ -7,20 +7,23 @@ import (
 	"github.com/gorilla/mux"
 	"net/http"
 	"path"
-	"regexp"
+	"strings"
 
 	"github.com/dwb/crispyci/types"
 )
 
 type githubWebhookPayload struct {
 	Repository struct {
-		Name string
+		Name    string
+		HtmlUrl string
 	}
 	Pusher struct {
 		Email string
 		Name  string
 	}
-	Ref string
+	Ref    string
+	Before string
+	After  string
 }
 
 type projectsIndexResponse struct {
@@ -50,9 +53,17 @@ type projectBuildUpdateResponse struct {
 	Deleted      bool                      `json:"deleted"`
 }
 
+type newProjectRequest struct {
+	Project types.Project `json:"project"`
+}
+
+type validationErrorsArray struct {
+	Errors []types.ValidationError `json:"errors"`
+}
+
 const StatusUnprocessableEntity = 422
 
-var branchRefPattern = regexp.MustCompile(`^refs/heads/(\w+)$`)
+const GitHubBranchRefPrefix = "refs/heads/"
 
 func New(server types.Server) (out http.Server) {
 	r := mux.NewRouter()
@@ -126,20 +137,53 @@ func New(server types.Server) (out http.Server) {
 	})
 
 	rApi.
+		Methods("DELETE").
+		Path("/projects/{id}").
+		HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+
+		projectId, err := types.ProjectIdFromString(mux.Vars(request)["id"])
+		if err != nil || projectId <= 0 {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		project, err := server.ProjectById(types.ProjectId(projectId))
+		if err != nil || project == nil {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+
+		err = server.DeleteProject(*project)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
+		prepareJSONHeaders(w)
+		w.WriteHeader(http.StatusNoContent)
+	})
+
+	rApi.
 		Methods("POST").
 		Path("/projects").
 		HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 
 		dec := json.NewDecoder(request.Body)
-		newProject := types.NewProject()
-		err := dec.Decode(&newProject)
+		projectRequest := new(newProjectRequest)
+		err := dec.Decode(&projectRequest)
 		if err != nil {
 			w.WriteHeader(StatusUnprocessableEntity)
 			w.Write([]byte("JSON parse error\n"))
 			return
 		}
 
-		// TODO: input validation
+		newProject := projectRequest.Project.Init()
+
+		if ok, errors := newProject.Validate(); !ok {
+			w.WriteHeader(StatusUnprocessableEntity)
+			writeHttpJSON(w, validationErrorsArray{errors})
+			return
+		}
 
 		err = server.WriteProject(newProject)
 		if err != nil {
@@ -149,8 +193,14 @@ func New(server types.Server) (out http.Server) {
 			return
 		}
 
-		// TODO: location header for new project
+		jr, err := getProjectWithBuilds(&newProject, server)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
 		w.WriteHeader(http.StatusCreated)
+		writeHttpJSON(w, projectShowResponse{Project: jr})
 	})
 
 	rApi.
@@ -258,15 +308,14 @@ func New(server types.Server) (out http.Server) {
 			return
 		}
 
-		name := payload.Repository.Name
-		m := branchRefPattern.FindStringSubmatch(payload.Ref)
-		if m != nil {
-			name += "-" + m[1]
-		}
-
 		req := types.NewProjectBuildRequest()
-		req.ProjectName = name
-		req.Source = "Github"
+		if strings.HasPrefix(payload.Ref, GitHubBranchRefPrefix) {
+			req.Branch = strings.TrimPrefix(payload.Ref, GitHubBranchRefPrefix)
+		}
+		req.Url = payload.Repository.HtmlUrl
+		req.FromCommit = payload.Before
+		req.ToCommit = payload.After
+		req.Source = "GitHub"
 		server.SubmitProjectBuildRequest(req)
 		w.WriteHeader(http.StatusNoContent)
 	})
@@ -304,7 +353,7 @@ func writeHttpJSON(w http.ResponseWriter, data interface{}) {
 }
 
 func prepareJSONHeaders(w http.ResponseWriter) {
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 }
 
 func getProjectBuild(w http.ResponseWriter, request *http.Request, server types.Server) (projectBuild *types.ProjectBuild) {

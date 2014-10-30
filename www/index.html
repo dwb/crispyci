@@ -53,7 +53,16 @@
       </div>
     </script>
 
-    <script type="text/x-handlebars" data-template-name="projects">
+    <script type="text/x-handlebars" data-template-name="projects/new">
+      {{error-messages for=this}}
+
+      {{#object-form for=this action="save" buttonLable="Save"}}
+        {{form-field for="name"}}
+        {{form-field for="url" labelText="URL"}}
+      {{/object-form}}
+    </script>
+
+    <script type="text/x-handlebars" data-template-name="projects/index">
       <h1>All Projects</h1>
 
       <table class="table">
@@ -107,6 +116,10 @@
           {{/each}}
         </tbody>
       </table>
+
+      <p>
+        <button {{action 'delete'}} class="btn">Delete</button>
+      </p>
     </script>
 
     <script type="text/x-handlebars" data-template-name="abort-project-build">
@@ -128,6 +141,56 @@
       <pre id="projectBuildProgress"></pre>
     </script>
 
+    <script type="text/x-handlebars" data-template-name="components/error-messages">
+      {{#if errors.length}}
+        <div class="alert alert-danger">
+          <h4>There was a problem</h4>
+          <ul>
+            {{#each baseErrors}}
+              <li>
+                {{message}}
+              </li>
+            {{/each}}
+
+            {{#each errors}}
+              <li>
+                {{titleize attribute}} {{message}}
+              </li>
+            {{/each}}
+          </ul>
+        </div>
+      {{/if}}
+    </script>
+
+
+    <script type="text/x-handlebars" data-template-name="components/form-field">
+      <div class="form-group" {{bind-attr class="hasError:has-error"}}>
+        <label {{bind-attr for=label}}>{{label}}</label>
+        {{#if template}}
+          {{yield}}
+        {{else}}
+          {{input type=type value=value id=label class="form-control"}}
+        {{/if}}
+
+      {{#if errors.length}}
+        <span class="help-block">
+          {{errors}}
+        </span>
+      {{/if}}
+
+      </div>
+    </script>
+
+    <script type="text/x-handlebars" data-template-name="components/object-form">
+      <form {{action "submit" on="submit"}}>
+
+        {{yield}}
+
+        <div class="form-group">
+          <button type='submit' class='btn btn-block btn-primary'>{{buttonLabel}}</button>
+        </div>
+      </form>
+    </script>
   </head>
 
   <body>

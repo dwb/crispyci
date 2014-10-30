@@ -29,7 +29,13 @@ func (self ProjectId) String() string {
 type Project struct {
 	Id        ProjectId `json:"id"`
 	Name      string    `json:"name"`
+	Url       string    `json:"url"`
 	ScriptSet string    `json:"scriptSet"`
+}
+
+type ProjectUpdate struct {
+	Project
+	Deleted bool
 }
 
 func randUint64() (out uint64) {
@@ -38,8 +44,13 @@ func randUint64() (out uint64) {
 	return
 }
 
-func NewProject() (newProject Project) {
-	return Project{Id: ProjectId(randUint64())}
+func NewProject() Project {
+	return new(Project).Init()
+}
+
+func (self Project) Init() Project {
+	self.Id = ProjectId(randUint64())
+	return self
 }
 
 type ProjectWithBuilding struct {
@@ -48,19 +59,25 @@ type ProjectWithBuilding struct {
 }
 
 type ProjectBuildRequest struct {
-	ProjectName string
-	Source      string
-	ReceivedAt  time.Time
-	Project     Project
-	AllowStart  chan bool
+	Url        string
+	Branch     string
+	FromCommit string
+	ToCommit   string
+	Source     string
+	ReceivedAt time.Time
+	AllowStart chan bool
+	Project    Project
 }
 
 func NewProjectBuildRequest() (req ProjectBuildRequest) {
 	return ProjectBuildRequest{ReceivedAt: time.Now(), AllowStart: make(chan bool)}
 }
 
-func (self *ProjectBuildRequest) FindProject(store Store) (project *Project, err error) {
-	project, err = store.ProjectByName(self.ProjectName)
+func (self *ProjectBuildRequest) FindProject(store Store) (err error) {
+	project, err := store.ProjectByUrl(self.Url)
+	if err == nil {
+		self.Project = *project
+	}
 	return
 }
 
@@ -137,6 +154,11 @@ func (self ProjectBuildStatus) String() string {
 	return projectBuildStatusNames[self]
 }
 
+type ValidationError struct {
+	Field   string `json:"field"`
+	Message string `json:"message"`
+}
+
 type Server interface {
 	ScriptDir() string
 
@@ -153,8 +175,9 @@ type Server interface {
 	// Store proxies
 	AllProjects() ([]Project, error)
 	ProjectById(id ProjectId) (*Project, error)
-	ProjectByName(name string) (*Project, error)
+	ProjectByUrl(url string) (*Project, error)
 	WriteProject(Project) error
+	DeleteProject(Project) error
 	ProjectBuildById(ProjectBuildId) (*ProjectBuild, error)
 	BuildsForProject(Project) ([]ProjectBuild, error)
 	LastBuildForProject(Project) (*ProjectBuild, error)
@@ -167,8 +190,9 @@ type Store interface {
 	Close()
 	AllProjects() ([]Project, error)
 	ProjectById(id ProjectId) (*Project, error)
-	ProjectByName(name string) (*Project, error)
+	ProjectByUrl(url string) (*Project, error)
 	WriteProject(Project) error
+	DeleteProject(Project) error
 	ProjectBuildById(ProjectBuildId) (*ProjectBuild, error)
 	BuildsForProject(Project) ([]ProjectBuild, error)
 	LastBuildForProject(Project) (*ProjectBuild, error)

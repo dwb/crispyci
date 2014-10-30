@@ -1,5 +1,7 @@
 (function () {
 
+var __hasProp = {}.hasOwnProperty;
+
 var apiPathPrefix = "/api/v1";
 
 var defaultDateFormat = function (dt) {
@@ -57,6 +59,7 @@ CrispyCI.ProjectBuild = DS.Model.extend({
 
 CrispyCI.Project = DS.Model.extend({
   name: DS.attr(),
+  url: DS.attr(),
   scriptSet: DS.attr(),
   projectBuilds: DS.hasMany('projectBuild'),
 });
@@ -80,6 +83,16 @@ if (Modernizr.history) {
 CrispyCI.IndexRoute = Ember.Route.extend({
   beforeModel: function () {
     this.transitionTo('projects');
+  }
+});
+
+CrispyCI.ProjectsNewRoute = Ember.Route.extend({
+  model: function (params) {
+    return this.store.createRecord('project');
+  },
+
+  setupController: function(controller, model) {
+    controller.set("model", model);
   }
 });
 
@@ -175,6 +188,21 @@ CrispyCI.ProjectsController = Ember.ArrayController.extend({
   itemController: 'project'
 });
 
+CrispyCI.ProjectsNewController = Ember.ObjectController.extend({
+  actions: {
+    save: function () {
+      var self = this;
+      this.get('model').save().then(function (model) {
+        // Success
+        self.transitionToRoute('projects');
+      }, function (error) {
+        // Error
+        return error;
+      });
+    },
+  },
+});
+
 CrispyCI.ProjectController = Ember.ObjectController.extend({
   needs: ['projectBuilds'],
 
@@ -182,7 +210,20 @@ CrispyCI.ProjectController = Ember.ObjectController.extend({
     return CrispyCI.ProjectBuildController.create({
       content: this.get('projectBuilds.lastObject')
     });
-  }.property('projectBuilds.lastObject')
+  }.property('projectBuilds.lastObject'),
+
+  actions : {
+    delete: function () {
+      if (confirm("Are you sure you want to delete this project?")) {
+        var self = this;
+        this.get('model').destroyRecord().then(function () {
+          self.transitionToRoute('projects');
+        }, function (error) {
+          alert("Couldn't delete for some reason, sorry");
+        });
+      }
+    }
+  }
 });
 
 
@@ -282,6 +323,31 @@ CrispyCI.ProjectBuildController = Ember.ObjectController.extend({
 
 CrispyCI.ApplicationAdapter = DS.RESTAdapter.extend({
   namespace: apiPathPrefix.replace(/^\//, ''),
+
+  ajaxError: function(jqXHR) {
+    var error = this._super(jqXHR);
+
+    if (jqXHR && jqXHR.status === 422) {
+      var response = Ember.$.parseJSON(jqXHR.responseText),
+          errors = {};
+
+      if (response.errors !== undefined) {
+        var jsonErrors = response.errors;
+
+        Ember.EnumerableUtils.forEach(jsonErrors, function(error) {
+          var key = Ember.String.camelize(error['field']);
+          var msg = error['message'];
+          if (errors[key] === undefined) {
+            errors[key] = [];
+          }
+          errors[key] = errors[key].concat(msg)
+        });
+      }
+      return new DS.InvalidError(errors);
+    } else {
+      return error;
+    }
+  }
 });
 
 CrispyCI.ProjectSerializer = DS.RESTSerializer.extend({
@@ -301,6 +367,101 @@ CrispyCI.ProjectSerializer = DS.RESTSerializer.extend({
     payload.projectBuilds = projectBuilds;
     return this._super.apply(this, arguments);
   }
+});
+
+/* Form components lifted and very slightly modified from
+ * http://alexspeller.com/server-side-validations-with-ember-data-and-ds-errors/
+ */
+
+DS.Model.reopen({
+  adapterDidInvalidate: function(errors) {
+    var errorValue, key, recordErrors, _results;
+    recordErrors = this.get('errors');
+    _results = [];
+    for (key in errors) {
+      if (!__hasProp.call(errors, key)) continue;
+      errorValue = errors[key];
+      _results.push(recordErrors.add(key, errorValue));
+    }
+    return _results;
+  }
+});
+
+Ember.Handlebars.helper('titleize', function(text) {
+  return text.titleize();
+});
+
+String.prototype.titleize = function() {
+  return this.underscore().replace(/_/g, " ").capitalize();
+};
+
+CrispyCI.ErrorMessagesComponent = Em.Component.extend({
+  errors: Em.computed.filter('for.errors.content', function(error) {
+    return error.attribute !== 'base';
+  }),
+  baseErrors: Em.computed.filter('for.errors.content', function(error) {
+    return error.attribute === 'base';
+  })
+});
+
+CrispyCI.ObjectFormComponent = Em.Component.extend({
+  buttonLabel: "Submit",
+  actions: {
+    submit: function() {
+      return this.sendAction();
+    }
+  }
+});
+
+CrispyCI.FormFieldComponent = Em.Component.extend({
+  type: Em.computed('for', function() {
+    if (this.get('for').match(/password/)) {
+      return "password";
+    } else {
+      return "text";
+    }
+  }),
+
+  label: Em.computed('for', 'labelText', function() {
+    var labelText = this.get('labelText');
+    if (labelText !== undefined) {
+      return labelText;
+    } else {
+      return this.get('for').underscore().replace(/_/g, " ").capitalize();
+    }
+  }),
+
+  fieldId: Em.computed('object', 'for', function() {
+    return "" + (Em.guidFor(this.get('object'))) + "-input-" + (this.get('for'));
+  }),
+
+  object: Em.computed.alias('parentView.for'),
+
+  hasError: (function() {
+    var _ref;
+    return (_ref = this.get('object.errors')) != null ? _ref.has(this.get('for')) : void 0;
+  }).property('object.errors.[]'),
+
+  errors: (function() {
+    if (!this.get('object.errors')) {
+      return Em.A();
+    }
+    return this.get('object.errors').errorsFor(this.get('for')).mapBy('message').join(', ');
+  }).property('object.errors.[]'),
+
+  setupBindings: (function() {
+    var _ref;
+    if ((_ref = this.binding) != null) {
+      _ref.disconnect(this);
+    }
+    this.binding = Em.Binding.from("object." + (this.get('for'))).to('value');
+    return this.binding.connect(this);
+  }).on('init').observes('for', 'object'),
+
+  tearDownBindings: (function() {
+    var _ref;
+    return (_ref = this.binding) != null ? _ref.disconnect(this) : void 0;
+  }).on('willDestroyElement')
 });
 
 })()

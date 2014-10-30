@@ -70,14 +70,14 @@ func (self *LevelDbStore) ProjectById(id types.ProjectId) (project *types.Projec
 	return
 }
 
-func (self *LevelDbStore) ProjectByName(name string) (project *types.Project, err error) {
+func (self *LevelDbStore) ProjectByUrl(url string) (project *types.Project, err error) {
 	ss, err := self.db.GetSnapshot()
 	if err != nil {
 		return
 	}
 	defer ss.Release()
 
-	projectIdBytes, err := ss.Get([]byte(projectNameIndexKey(name)), nil)
+	projectIdBytes, err := ss.Get([]byte(projectUrlIndexKey(url)), nil)
 	if err != nil {
 		return
 	}
@@ -106,8 +106,29 @@ func (self *LevelDbStore) WriteProject(project types.Project) (err error) {
 
 	batch := new(leveldb.Batch)
 	batch.Put([]byte(projectKey(project)), buf.Bytes())
-	batch.Put([]byte(projectNameIndexKey(project.Name)),
+	batch.Put([]byte(projectUrlIndexKey(project.Url)),
 		[]byte(fmt.Sprintf("%s", project.Id)))
+
+	err = self.db.Write(batch, &levelDbWriteOptions)
+	return
+}
+
+func (self *LevelDbStore) DeleteProject(project types.Project) (err error) {
+	builds, err := self.BuildsForProject(project)
+	if err != nil {
+		return
+	}
+
+	for _, b := range builds {
+		err = self.DeleteProjectBuild(b)
+		if err != nil {
+			return
+		}
+	}
+
+	batch := new(leveldb.Batch)
+	batch.Delete([]byte(projectKey(project)))
+	batch.Delete([]byte(projectUrlIndexKey(project.Url)))
 
 	err = self.db.Write(batch, &levelDbWriteOptions)
 	return
@@ -244,8 +265,8 @@ func projectKeyById(id types.ProjectId) string {
 	return fmt.Sprintf("%s%s", projectsKey, id)
 }
 
-func projectNameIndexKey(name string) string {
-	return fmt.Sprintf("ProjectNameToId:%s", name)
+func projectUrlIndexKey(name string) string {
+	return fmt.Sprintf("ProjectUrlToId:%s", name)
 }
 
 func projectBuildsKeyForProject(project types.Project) string {
@@ -257,7 +278,7 @@ func projectBuildKey(projectBuild types.ProjectBuild) string {
 }
 
 func projectBuildKeyById(id types.ProjectBuildId) string {
-	return fmt.Sprintf("%:%s", projectBuildsKey, id)
+	return fmt.Sprintf("%s:%s", projectBuildsKey, id)
 }
 
 func projectBuildForProjectKey(projectBuild types.ProjectBuild) string {
