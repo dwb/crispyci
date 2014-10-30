@@ -92,6 +92,7 @@ func (self *Server) Serve() {
 		case req := <-self.canStartProjectChan:
 			if _, ok := self.buildingProjects[req.Project.Id]; ok {
 				log.Printf("'%s' is already building; queueing", req.Project.Name)
+				req.AllowStart <- false
 				id := req.Project.Id
 				projectQueue := self.waitingProjectBuilds[id]
 				if projectQueue == nil {
