@@ -9,3 +9,8 @@ body {
 .col-right {
   text-align: right;
 }
+
+.form {
+  margin: 0 auto;
+  width: 40em;
+}

@@ -137,6 +137,51 @@ func New(server types.Server) (out http.Server) {
 	})
 
 	rApi.
+		Methods("PUT").
+		Path("/projects/{id}").
+		HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+
+		projectId, err := types.ProjectIdFromString(mux.Vars(request)["id"])
+		if err != nil || projectId <= 0 {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		project, err := server.ProjectById(types.ProjectId(projectId))
+		if err != nil || project == nil {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+
+		dec := json.NewDecoder(request.Body)
+		projectRequest := new(newProjectRequest)
+		err = dec.Decode(&projectRequest)
+		if err != nil {
+			w.WriteHeader(StatusUnprocessableEntity)
+			w.Write([]byte("JSON parse error\n"))
+			return
+		}
+
+		editedProject := projectRequest.Project
+		editedProject.Id = project.Id
+
+		if ok, errors := editedProject.Validate(); !ok {
+			w.WriteHeader(StatusUnprocessableEntity)
+			writeHttpJSON(w, validationErrorsArray{errors})
+			return
+		}
+
+		err = server.WriteProject(editedProject)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			// TODO: better error message / logging
+			w.Write([]byte("Save error\n"))
+			return
+		}
+
+		w.WriteHeader(http.StatusNoContent)
+	})
+	rApi.
 		Methods("DELETE").
 		Path("/projects/{id}").
 		HandlerFunc(func(w http.ResponseWriter, request *http.Request) {

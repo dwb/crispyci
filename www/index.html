@@ -53,15 +53,6 @@
       </div>
     </script>
 
-    <script type="text/x-handlebars" data-template-name="projects/new">
-      {{error-messages for=this}}
-
-      {{#object-form for=this action="save" buttonLable="Save"}}
-        {{form-field for="name"}}
-        {{form-field for="url" labelText="URL"}}
-      {{/object-form}}
-    </script>
-
     <script type="text/x-handlebars" data-template-name="projects/index">
       <h1>All Projects</h1>
 
@@ -89,7 +80,7 @@
       </table>
     </script>
 
-    <script type="text/x-handlebars" data-template-name="project">
+    <script type="text/x-handlebars" data-template-name="project/index">
       <h1>{{name}}</h1>
 
       <p>
@@ -118,12 +109,24 @@
       </table>
 
       <p>
-        <button {{action 'delete'}} class="btn">Delete</button>
+        {{#link-to 'project.edit' class="btn btn-primary"}}Edit{{/link-to}}
+        <button {{action 'delete'}} class="btn btn-danger">Delete</button>
       </p>
     </script>
 
     <script type="text/x-handlebars" data-template-name="abort-project-build">
       <a href="#">Abort</a>
+    </script>
+
+    <script type="text/x-handlebars" data-template-name="project/edit">
+      <div class="form">
+        {{error-messages for=this}}
+
+        {{#object-form for=this action="save" buttonLable="Save"}}
+          {{form-field for="name"}}
+          {{form-field for="url" labelText="URL"}}
+        {{/object-form}}
+      </div>
     </script>
 
     <script type="text/x-handlebars" data-template-name="projectBuild">

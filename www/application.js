@@ -70,7 +70,9 @@ CrispyCI.Router.map(function () {
   this.resource('projects', function () {
     this.route('new');
   });
-  this.resource('project', {path: "/projects/:project_id"});
+  this.resource('project', {path: "/projects/:project_id"}, function () {
+    this.route('edit');
+  });
   this.resource('projectBuild', {path: "/projectBuilds/:project_build_id"});
 });
 
@@ -83,16 +85,6 @@ if (Modernizr.history) {
 CrispyCI.IndexRoute = Ember.Route.extend({
   beforeModel: function () {
     this.transitionTo('projects');
-  }
-});
-
-CrispyCI.ProjectsNewRoute = Ember.Route.extend({
-  model: function (params) {
-    return this.store.createRecord('project');
-  },
-
-  setupController: function(controller, model) {
-    controller.set("model", model);
   }
 });
 
@@ -111,8 +103,14 @@ CrispyCI.ProjectRoute = Ember.Route.extend({
   model: function (params) {
     return this.store.find('project', params.project_id)
   },
+
   setupController: function(controller, model) {
     controller.set('model', model);
+  }
+});
+
+CrispyCI.ProjectIndexRoute = Ember.Route.extend({
+  setupController: function(controller, model) {
     controller.set('controllers.projectBuilds.content', model.get('projectBuilds'));
   }
 });
@@ -132,6 +130,25 @@ CrispyCI.ProjectBuildRoute = Ember.Route.extend({
   }
 });
 
+CrispyCI.ProjectsNewRoute = Ember.Route.extend({
+  controllerName: "projectEdit",
+  templateName: "project/edit",
+
+  model: function (params) {
+    return this.store.createRecord('project');
+  },
+
+  setupController: function(controller, model) {
+    controller.set("model", model);
+  }
+});
+
+CrispyCI.ProjectEditRoute = Ember.Route.extend({
+  renderTemplate: function () {
+    this.render("project/edit", {controller: "projectEdit"});
+  }
+}); 
+ 
 // --- Controllers ---
 
 CrispyCI.ApplicationController = Ember.Controller.extend({
@@ -188,22 +205,10 @@ CrispyCI.ProjectsController = Ember.ArrayController.extend({
   itemController: 'project'
 });
 
-CrispyCI.ProjectsNewController = Ember.ObjectController.extend({
-  actions: {
-    save: function () {
-      var self = this;
-      this.get('model').save().then(function (model) {
-        // Success
-        self.transitionToRoute('projects');
-      }, function (error) {
-        // Error
-        return error;
-      });
-    },
-  },
+CrispyCI.ProjectController = Ember.ObjectController.extend({
 });
 
-CrispyCI.ProjectController = Ember.ObjectController.extend({
+CrispyCI.ProjectIndexController = Ember.ObjectController.extend({
   needs: ['projectBuilds'],
 
   lastProjectBuild: function () {
@@ -226,6 +231,20 @@ CrispyCI.ProjectController = Ember.ObjectController.extend({
   }
 });
 
+CrispyCI.ProjectEditController = Ember.ObjectController.extend({
+  actions: {
+    save: function () {
+      var self = this;
+      this.get('model').save().then(function (model) {
+        // Success
+        self.transitionToRoute('projects');
+      }, function (error) {
+        // Error
+        return error;
+      });
+    },
+  },
+});
 
 CrispyCI.ProjectBuildsController = Ember.ArrayController.extend({
   itemController: 'projectBuild',
