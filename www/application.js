@@ -1,5 +1,28 @@
 (function () {
 
+Ember.DSModelRoute = Ember.Route.extend({
+  deactivate: function() {
+    var model = this.get('controller.model');
+    model.rollback();
+    if (model.get('isNew')) {
+      model.deleteRecord();
+    }
+  },
+
+  actions: {
+    willTransition: function(transition) {
+      var model = this.get('controller.model');
+      if (model.get('isDirty')) {
+        if (confirm('You have unsaved changes. They will be lost if you continue!')) {
+          model.rollback();
+        } else {
+          transition.abort();
+        }
+      }
+    }
+  }
+});
+
 var __hasProp = {}.hasOwnProperty;
 
 var apiPathPrefix = "/api/v1";
@@ -99,7 +122,7 @@ CrispyCI.ProjectsRoute = Ember.Route.extend({
   sortProperties: ['name']
 });
 
-CrispyCI.ProjectRoute = Ember.Route.extend({
+CrispyCI.ProjectRoute = Ember.DSModelRoute.extend({
   model: function (params) {
     return this.store.find('project', params.project_id)
   },
@@ -130,7 +153,7 @@ CrispyCI.ProjectBuildRoute = Ember.Route.extend({
   }
 });
 
-CrispyCI.ProjectsNewRoute = Ember.Route.extend({
+CrispyCI.ProjectsNewRoute = Ember.DSModelRoute.extend({
   controllerName: "projectEdit",
   templateName: "project/edit",
 
@@ -143,7 +166,7 @@ CrispyCI.ProjectsNewRoute = Ember.Route.extend({
   }
 });
 
-CrispyCI.ProjectEditRoute = Ember.Route.extend({
+CrispyCI.ProjectEditRoute = Ember.DSModelRoute.extend({
   renderTemplate: function () {
     this.render("project/edit", {controller: "projectEdit"});
   }
