@@ -288,5 +288,3 @@ func projectProgressPrefix(projectBuild types.ProjectBuild) string {
 func projectProgressPrefixByProjectBuildId(id types.ProjectBuildId) string {
 	return fmt.Sprintf("ProjectProgressForProjectBuildId:%s:", id)
 }
-
-
