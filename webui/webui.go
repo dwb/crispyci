@@ -5,6 +5,7 @@ import (
 	"code.google.com/p/go.net/websocket"
 	"encoding/json"
 	"github.com/gorilla/mux"
+	"io/ioutil"
 	"net/http"
 	"path"
 	"strings"
@@ -15,7 +16,7 @@ import (
 type githubWebhookPayload struct {
 	Repository struct {
 		Name    string
-		HtmlUrl string
+		HtmlUrl string `json:"html_url"`
 	}
 	Pusher struct {
 		Email string
@@ -347,7 +348,13 @@ func New(server types.Server) (out http.Server) {
 		HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 
 		var payload githubWebhookPayload
-		err := json.Unmarshal([]byte(request.FormValue("payload")), &payload)
+		body, err := ioutil.ReadAll(request.Body)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
+		err = json.Unmarshal(body, &payload)
 		if err != nil {
 			w.WriteHeader(StatusUnprocessableEntity)
 			return
