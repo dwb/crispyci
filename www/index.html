@@ -125,6 +125,7 @@
         {{#object-form for=this action="save" buttonLable="Save"}}
           {{form-field for="name"}}
           {{form-field for="url" labelText="URL"}}
+          {{form-field for="scriptSet" labelText="Script set"}}
         {{/object-form}}
       </div>
     </script>
@@ -168,11 +169,11 @@
 
     <script type="text/x-handlebars" data-template-name="components/form-field">
       <div class="form-group" {{bind-attr class="hasError:has-error"}}>
-        <label {{bind-attr for=label}}>{{label}}</label>
+        <label {{bind-attr for=fieldId}}>{{label}}</label>
         {{#if template}}
           {{yield}}
         {{else}}
-          {{input type=type value=value id=label class="form-control"}}
+          {{input type=type value=value id=fieldId class="form-control"}}
         {{/if}}
 
       {{#if errors.length}}
