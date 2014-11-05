@@ -40,7 +40,7 @@ type ProjectUpdate struct {
 
 func randUint64() (out uint64) {
 	out = uint64(rng.Uint32())
-	out |= uint64(rng.Uint32() << 32)
+	out |= uint64(rng.Uint32()) << 32
 	return
 }
 
