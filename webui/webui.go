@@ -117,7 +117,7 @@ func New(server types.Server) (out http.Server) {
 		HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 
 		projectId, err := types.ProjectIdFromString(mux.Vars(request)["id"])
-		if err != nil || projectId <= 0 {
+		if err != nil || projectId == "" {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
@@ -143,7 +143,7 @@ func New(server types.Server) (out http.Server) {
 		HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 
 		projectId, err := types.ProjectIdFromString(mux.Vars(request)["id"])
-		if err != nil || projectId <= 0 {
+		if err != nil || projectId == "" {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
@@ -188,7 +188,7 @@ func New(server types.Server) (out http.Server) {
 		HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 
 		projectId, err := types.ProjectIdFromString(mux.Vars(request)["id"])
-		if err != nil || projectId <= 0 {
+		if err != nil || projectId == "" {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
@@ -410,7 +410,7 @@ func prepareJSONHeaders(w http.ResponseWriter) {
 
 func getProjectBuild(w http.ResponseWriter, request *http.Request, server types.Server) (projectBuild *types.ProjectBuild) {
 	projectBuildId, err := types.ProjectBuildIdFromString(mux.Vars(request)["id"])
-	if err != nil || projectBuildId <= 0 {
+	if err != nil || projectBuildId == "" {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}

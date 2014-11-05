@@ -1,29 +1,15 @@
 package types
 
 import (
-	"fmt"
-	"math/rand"
-	"strconv"
+	"crypto/rand"
+	"encoding/base64"
 	"time"
 )
 
-var (
-	rng = rand.New(rand.NewSource(time.Now().UnixNano()))
-)
-
-type ProjectId uint64
+type ProjectId string
 
 func ProjectIdFromString(in string) (out ProjectId, err error) {
-	i, err := stringToUint64(in)
-	if err != nil {
-		return
-	}
-	out = ProjectId(i)
-	return
-}
-
-func (self ProjectId) String() string {
-	return fmt.Sprintf("%d", self)
+	return ProjectId(in), nil
 }
 
 type Project struct {
@@ -38,10 +24,14 @@ type ProjectUpdate struct {
 	Deleted bool
 }
 
-func randUint64() (out uint64) {
-	out = uint64(rng.Uint32())
-	out |= uint64(rng.Uint32()) << 32
-	return
+func randId() string {
+	// 18 bytes * 8 bits is divisible by 3, so no base64 padding
+	buf := make([]byte, 18)
+	_, err := rand.Read(buf)
+	if err != nil {
+		panic(err)
+	}
+	return base64.URLEncoding.EncodeToString(buf)
 }
 
 func NewProject() Project {
@@ -49,7 +39,7 @@ func NewProject() Project {
 }
 
 func (self Project) Init() Project {
-	self.Id = ProjectId(randUint64())
+	self.Id = ProjectId(randId())
 	return self
 }
 
@@ -81,19 +71,10 @@ func (self *ProjectBuildRequest) FindProject(store Store) (err error) {
 	return
 }
 
-type ProjectBuildId uint64
-
-func (self ProjectBuildId) String() string {
-	return fmt.Sprintf("%d", self)
-}
+type ProjectBuildId string
 
 func ProjectBuildIdFromString(in string) (out ProjectBuildId, err error) {
-	i, err := stringToUint64(in)
-	if err != nil {
-		return
-	}
-	out = ProjectBuildId(i)
-	return
+	return ProjectBuildId(in), nil
 }
 
 type ProjectBuild struct {
@@ -114,7 +95,7 @@ type ProjectBuildUpdate struct {
 }
 
 func NewProjectBuild(project Project, scriptDir string, workingDir string, statusChanges chan ProjectBuild) (out ProjectBuild) {
-	return ProjectBuild{Id: ProjectBuildId(randUint64()), Project: project, ScriptDir: scriptDir,
+	return ProjectBuild{Id: ProjectBuildId(randId()), Project: project, ScriptDir: scriptDir,
 		WorkingDir: workingDir, statusChanges: statusChanges,
 		interruptChan: make(chan bool, 1)}
 }
@@ -200,10 +181,4 @@ type Store interface {
 	ProgressForProjectBuild(ProjectBuild) (*[]ProjectProgress, error)
 	WriteProjectProgress(ProjectProgress) error
 	DeleteProjectBuild(ProjectBuild) error
-}
-
-// ---
-
-func stringToUint64(in string) (uint64, error) {
-	return strconv.ParseUint(in, 10, 64)
 }

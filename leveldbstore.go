@@ -8,7 +8,6 @@ import (
 	leveldbopt "github.com/syndtr/goleveldb/leveldb/opt"
 	leveldbutil "github.com/syndtr/goleveldb/leveldb/util"
 	"log"
-	"strconv"
 
 	"github.com/dwb/crispyci/types"
 )
@@ -81,11 +80,8 @@ func (self *LevelDbStore) ProjectByUrl(url string) (project *types.Project, err 
 	if err != nil {
 		return
 	}
-	projectId, err := strconv.ParseUint(string(projectIdBytes), 10, 64)
-	if err != nil || projectId <= 0 {
-		return
-	}
 
+	projectId := string(projectIdBytes)
 	buf, err := ss.Get([]byte(projectKeyById(types.ProjectId(projectId))), nil)
 	if err != nil {
 		return
@@ -292,3 +288,5 @@ func projectProgressPrefix(projectBuild types.ProjectBuild) string {
 func projectProgressPrefixByProjectBuildId(id types.ProjectBuildId) string {
 	return fmt.Sprintf("ProjectProgressForProjectBuildId:%s:", id)
 }
+
+
