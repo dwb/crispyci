@@ -8,6 +8,7 @@ Recommended to develop:
 
 ```
 mkdir -p .dev/libexec .dev/var
+(cd .dev/libexec && ln -s ../../www)
 go build && ./crispyci -workingDir=.dev/var -scriptDir=.dev/libexec
 ```
 
