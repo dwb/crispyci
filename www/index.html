@@ -69,7 +69,7 @@
         <tbody>
           {{#each}}
           <tr {{bind-attr class="lastProjectBuild.statusBootstrapType"}}>
-            <td>{{#link-to 'project' this}}{{name}}{{/link-to}}</td>
+            <td>{{#link-to 'project' this}}{{name}}{{/link-to}} {{stuff}}</td>
             <td>{{lastProjectBuild.statusName}}</td>
             <td>{{lastProjectBuild.startedAt}}</td>
             <td>{{lastProjectBuild.finishedAt}}</td>
@@ -126,6 +126,7 @@
           {{form-field for="name"}}
           {{form-field for="url" labelText="URL"}}
           {{form-field for="scriptSet" labelText="Script set"}}
+          {{form-field for="mainBranchesString" labelText="Main branches"}}
         {{/object-form}}
       </div>
     </script>

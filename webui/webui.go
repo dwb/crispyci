@@ -37,7 +37,8 @@ type projectShowResponse struct {
 
 type projectWithBuilds struct {
 	types.Project
-	ProjectBuilds []projectBuildWithProjectId `json:"projectBuilds"`
+	ProjectBuilds         []projectBuildWithProjectId `json:"projectBuilds"`
+	ProjectBranchStatuses types.ProjectBranchStatuses `json:"branchStatuses"`
 }
 
 type projectBuildWithProjectId struct {
@@ -435,5 +436,9 @@ func getProjectWithBuilds(project *types.Project, server types.Server) (out proj
 			Project: projectBuild.Project.Id}
 	}
 
-	return projectWithBuilds{Project: *project, ProjectBuilds: projectBuildsWithProjectId}, nil
+	return projectWithBuilds{
+		Project:               *project,
+		ProjectBuilds:         projectBuildsWithProjectId,
+		ProjectBranchStatuses: server.BranchStatusesForProject(*project),
+	}, nil
 }

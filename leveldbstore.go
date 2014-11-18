@@ -189,10 +189,18 @@ func (self *LevelDbStore) WriteProjectBuild(projectBuild types.ProjectBuild) (er
 	var buf bytes.Buffer
 	enc := gob.NewEncoder(&buf)
 	enc.Encode(&projectBuild)
-	toWrite := buf.Bytes()
+	pbEnc := buf.Bytes()
 
-	batch.Put([]byte(projectBuildKey(projectBuild)), toWrite)
-	batch.Put([]byte(projectBuildForProjectKey(projectBuild)), toWrite)
+	batch.Put([]byte(projectBuildKey(projectBuild)), pbEnc)
+	batch.Put([]byte(projectBuildForProjectKey(projectBuild)), pbEnc)
+
+	if projectBuild.ProjectBuildRequest.IsForMainBranch() {
+		buf.Reset()
+		enc.Encode(projectBuild.Status)
+		statusEnc := buf.Bytes()
+
+		batch.Put([]byte(projectBranchStatusKeyForProjectBuild(projectBuild)), statusEnc)
+	}
 
 	err = self.db.Write(batch, &levelDbWriteOptions)
 	return
@@ -243,6 +251,28 @@ func (self *LevelDbStore) WriteProjectProgress(projectProgress types.ProjectProg
 	return
 }
 
+func (self *LevelDbStore) BranchStatusesForProject(project types.Project) (out types.ProjectBranchStatuses) {
+	var status types.ProjectBuildStatus
+	out = make(types.ProjectBranchStatuses)
+
+	for _, branch := range project.MainBranches {
+		buf, err := self.db.Get([]byte(projectBranchStatusKey(project, branch)), nil)
+		if err != nil {
+			continue
+		}
+
+		dec := gob.NewDecoder(bytes.NewBuffer(buf))
+		err = dec.Decode(&status)
+		if err != nil {
+			continue
+		}
+
+		out[branch] = status
+	}
+
+	return out
+}
+
 // ---
 
 func rangeForKeyPrefix(prefix string) leveldbutil.Range {
@@ -287,4 +317,12 @@ func projectProgressPrefix(projectBuild types.ProjectBuild) string {
 
 func projectProgressPrefixByProjectBuildId(id types.ProjectBuildId) string {
 	return fmt.Sprintf("ProjectProgressForProjectBuildId:%s:", id)
+}
+
+func projectBranchStatusKeyForProjectBuild(b types.ProjectBuild) string {
+	return projectBranchStatusKey(b.Project, b.Branch)
+}
+
+func projectBranchStatusKey(p types.Project, branch string) string {
+	return fmt.Sprintf("ProjectBranchStatus:%s:%s", p.Id, branch)
 }

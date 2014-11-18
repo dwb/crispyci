@@ -13,10 +13,11 @@ func ProjectIdFromString(in string) (out ProjectId, err error) {
 }
 
 type Project struct {
-	Id        ProjectId `json:"id"`
-	Name      string    `json:"name"`
-	Url       string    `json:"url"`
-	ScriptSet string    `json:"scriptSet"`
+	Id           ProjectId `json:"id"`
+	Name         string    `json:"name"`
+	Url          string    `json:"url"`
+	ScriptSet    string    `json:"scriptSet"`
+	MainBranches []string  `json:"mainBranches"`
 }
 
 type ProjectUpdate struct {
@@ -40,6 +41,7 @@ func NewProject() Project {
 
 func (self Project) Init() Project {
 	self.Id = ProjectId(randId())
+	self.MainBranches = make([]string, 0)
 	return self
 }
 
@@ -49,14 +51,14 @@ type ProjectWithBuilding struct {
 }
 
 type ProjectBuildRequest struct {
-	Url        string
-	Branch     string
-	FromCommit string
-	ToCommit   string
-	Source     string
-	ReceivedAt time.Time
-	AllowStart chan bool
-	Project    Project
+	Url        string    `json:"url"`
+	Branch     string    `json:"branch"`
+	FromCommit string    `json:"fromCommit"`
+	ToCommit   string    `json:"toCommit"`
+	Source     string    `json:"source"`
+	ReceivedAt time.Time `json:"receivedAt"`
+	AllowStart chan bool `json:"-"`
+	Project    Project   `json:"-"`
 }
 
 func NewProjectBuildRequest() (req ProjectBuildRequest) {
@@ -71,6 +73,19 @@ func (self *ProjectBuildRequest) FindProject(store Store) (err error) {
 	return
 }
 
+func (self *ProjectBuildRequest) IsForMainBranch() bool {
+	if self.Project.MainBranches == nil {
+		return false
+	}
+
+	for _, b := range self.Project.MainBranches {
+		if self.Branch == b {
+			return true
+		}
+	}
+	return false
+}
+
 type ProjectBuildId string
 
 func ProjectBuildIdFromString(in string) (out ProjectBuildId, err error) {
@@ -78,15 +93,15 @@ func ProjectBuildIdFromString(in string) (out ProjectBuildId, err error) {
 }
 
 type ProjectBuild struct {
+	ProjectBuildRequest
 	Id            ProjectBuildId     `json:"id"`
-	Project       Project            `json:"-"`
 	ScriptDir     string             `json:"-"`
 	WorkingDir    string             `json:"-"`
 	Status        ProjectBuildStatus `json:"status"`
 	StartedAt     time.Time          `json:"startedAt"`
 	FinishedAt    time.Time          `json:"finishedAt"`
-	statusChanges chan ProjectBuild
-	interruptChan chan bool
+	statusChanges chan ProjectBuild  `json:"-"`
+	interruptChan chan bool          `json:"-"`
 }
 
 type ProjectBuildUpdate struct {
@@ -94,10 +109,10 @@ type ProjectBuildUpdate struct {
 	Deleted bool
 }
 
-func NewProjectBuild(project Project, scriptDir string, workingDir string, statusChanges chan ProjectBuild) (out ProjectBuild) {
-	return ProjectBuild{Id: ProjectBuildId(randId()), Project: project, ScriptDir: scriptDir,
-		WorkingDir: workingDir, statusChanges: statusChanges,
-		interruptChan: make(chan bool, 1)}
+func NewProjectBuild(req ProjectBuildRequest, scriptDir string, workingDir string, statusChanges chan ProjectBuild) (out ProjectBuild) {
+	return ProjectBuild{Id: ProjectBuildId(randId()), ProjectBuildRequest: req,
+		ScriptDir: scriptDir, WorkingDir: workingDir,
+		statusChanges: statusChanges, interruptChan: make(chan bool, 1)}
 }
 
 type ProjectProgress struct {
@@ -135,6 +150,8 @@ func (self ProjectBuildStatus) String() string {
 	return projectBuildStatusNames[self]
 }
 
+type ProjectBranchStatuses map[string]ProjectBuildStatus
+
 type ValidationError struct {
 	Field   string `json:"field"`
 	Message string `json:"message"`
@@ -164,6 +181,7 @@ type Server interface {
 	LastBuildForProject(Project) (*ProjectBuild, error)
 	ProgressForProjectBuild(ProjectBuild) (*[]ProjectProgress, error)
 	DeleteProjectBuild(ProjectBuild) error
+	BranchStatusesForProject(Project) ProjectBranchStatuses
 }
 
 type Store interface {
@@ -181,4 +199,5 @@ type Store interface {
 	ProgressForProjectBuild(ProjectBuild) (*[]ProjectProgress, error)
 	WriteProjectProgress(ProjectProgress) error
 	DeleteProjectBuild(ProjectBuild) error
+	BranchStatusesForProject(Project) ProjectBranchStatuses
 }

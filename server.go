@@ -317,6 +317,10 @@ func (self *Server) writeProjectProgress(p types.ProjectProgress) (err error) {
 	return
 }
 
+func (self *Server) BranchStatusesForProject(p types.Project) types.ProjectBranchStatuses {
+	return self.store.BranchStatusesForProject(p)
+}
+
 // --- Private ---
 
 func (self *Server) buildProjectFromRequest(req types.ProjectBuildRequest) {
@@ -336,7 +340,7 @@ func (self *Server) buildProjectFromRequest(req types.ProjectBuildRequest) {
 		}
 
 		<-self.concurrentProjectTokens
-		projectBuild := types.NewProjectBuild(req.Project, self.scriptDir,
+		projectBuild := types.NewProjectBuild(req, self.scriptDir,
 			self.workingDir, self.projectBuildStatusChan)
 		err = projectBuild.Build(self.projectProgressChan)
 		if err != nil {

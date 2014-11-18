@@ -84,6 +84,21 @@ CrispyCI.Project = DS.Model.extend({
   name: DS.attr(),
   url: DS.attr(),
   scriptSet: DS.attr(),
+  mainBranches: DS.attr(),
+  mainBranchesString: function(key, value, previousValue) {
+    var out = undefined;
+    if (arguments.length > 1) {
+      out = value;
+      this.set('mainBranches', value.split(/\s*[;,]\s*/));
+    }
+
+    if (out === undefined) {
+      out = this.get('mainBranches');
+      return out ? out.join(', ') : "";
+    } else {
+      return out;
+    }
+  }.property('mainBranches'),
   projectBuilds: DS.hasMany('projectBuild'),
 });
 
@@ -224,22 +239,20 @@ CrispyCI.ApplicationController = Ember.Controller.extend({
   }
 });
 
-CrispyCI.ProjectsController = Ember.ArrayController.extend({
-  itemController: 'project'
+CrispyCI.ProjectsIndexController = Ember.ArrayController.extend({
+  itemController: 'project',
 });
 
 CrispyCI.ProjectController = Ember.ObjectController.extend({
+  lastProjectBuild: function () {
+    return CrispyCI.ProjectBuildController.create({
+      model: this.get('projectBuilds.lastObject')
+    });
+  }.property('projectBuilds.lastObject')
 });
 
 CrispyCI.ProjectIndexController = Ember.ObjectController.extend({
-  needs: ['projectBuilds'],
-
-  lastProjectBuild: function () {
-    return CrispyCI.ProjectBuildController.create({
-      content: this.get('projectBuilds.lastObject')
-    });
-  }.property('projectBuilds.lastObject'),
-
+  needs: "projectBuilds",
   actions : {
     delete: function () {
       if (confirm("Are you sure you want to delete this project?")) {
